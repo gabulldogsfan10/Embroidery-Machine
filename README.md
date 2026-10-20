@@ -13,7 +13,7 @@ threading, hooping, and stitching the Henderson pattern below.
 | File | What it is | Size | Hoop |
 | --- | --- | --- | --- |
 | [`patterns/henderson-est-2007.dst`](patterns/henderson-est-2007.dst) | "Henderson" over "est. 2007", bold serif lettering | 106 x 29 mm (4.2" x 1.1") | 5.5" x 5.5" |
-| [`patterns/henderson-est-2007-clover.dst`](patterns/henderson-est-2007-clover.dst) | Same lettering with a four-leaf clover above it | 106 x 75 mm (4.2" x 3") | 5.5" x 5.5" |
+| [`patterns/henderson-est-2007-clover.dst`](patterns/henderson-est-2007-clover.dst) | Same lettering with a small four-leaf clover beside "est. 2007" | 106 x 32 mm (4.2" x 1.3") | 5.5" x 5.5" |
 
 ![Preview](patterns/henderson-est-2007.png)
 
@@ -21,8 +21,8 @@ threading, hooping, and stitching the Henderson pattern below.
 
 The pattern has two thread colors: navy for "Henderson", then a stop for
 a thread change, then old gold for "est. 2007". Use the same spool twice
-for a one-color patch. The clover version adds a third color (kelly green
-for the clover, forest green for "Henderson", old gold for "est. 2007").
+for a one-color patch. The clover version adds a third color (forest green
+for "Henderson", kelly green for the clover, old gold for "est. 2007").
 
 To load it, copy the `.dst` file onto a FAT32 USB flash drive, plug it into
 the machine, and open it from the USB menu on the touchscreen.

@@ -1,9 +1,11 @@
-"""Generate the Henderson / est. 2007 lettering with a four-leaf clover above it.
+"""Generate the Henderson / est. 2007 lettering with a small four-leaf clover.
 
-The clover is four heart-shaped leaves around a small centre gap plus a curved
-stem that starts where the leaves end. Each leaf is filled along its own axis so the four leaves read
-separately in thread. Stitch order: clover (one green), "Henderson",
-"est. 2007" -- three colors, so the machine stops twice for thread changes.
+The clover sits on the second line, just left of "est. 2007", and the line is
+centred under "Henderson". It is four heart-shaped leaves around a small
+centre gap plus a short curved stem that starts where the leaves end. Each
+leaf is filled along its own axis so the four leaves read separately in
+thread. Stitch order: "Henderson", clover, "est. 2007" -- three colors, so the
+machine stops twice for thread changes.
 
 Usage:
     python3 tools/make_clover_pattern.py
@@ -12,20 +14,20 @@ Usage:
 import os
 
 import pyembroidery
-from shapely.affinity import rotate
+from shapely.affinity import rotate, translate
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
-from make_text_pattern import LINES, OUT_DIR, layout_lines, stitch
+from make_text_pattern import OUT_DIR, layout_lines, stitch
 
 # All sizes in millimetres.
-CLOVER_COLOR = (0x2E8B3A, "Kelly green")
 TEXT_COLORS = [(0x1E5631, "Forest green"), (0x8B6B2E, "Old gold")]
-LEAF_LENGTH = 15.0      # centre to the top of a leaf's lobes
-LEAF_LOBE = 4.6         # radius of each of the two lobes of a heart leaf
-CENTER_GAP = 0.9        # leaves start this far out from the centre
-STEM_WIDTH = 1.8
-CLOVER_GAP = 6.0        # space between the bottom of the clover and the text
+CLOVER_COLOR = (0x2E8B3A, "Kelly green")
+LEAF_LENGTH = 5.0       # centre to the top of a leaf's lobes
+LEAF_LOBE = 1.6         # radius of each of the two lobes of a heart leaf
+CENTER_GAP = 0.5        # leaves start this far out from the centre
+STEM_WIDTH = 1.0
+CLOVER_SPACE = 2.5      # space between the clover and "est. 2007"
 
 
 def heart_leaf():
@@ -45,7 +47,7 @@ def stem():
     pts = []
     for i in range(21):
         t = i / 20
-        pts.append((9.0 * t ** 1.8, -25.0 * t))
+        pts.append((2.4 * t ** 1.8, -6.5 * t))
     return LineString(pts).buffer(STEM_WIDTH / 2, cap_style=1)
 
 
@@ -63,13 +65,27 @@ def clover():
 
 
 def build():
+    henderson, est = layout_lines()
+    # Centre the clover's leaves on the middle of the "est. 2007" letters,
+    # to their left.
     items = clover()
-    bottom = unary_union([s for s, _ in items]).bounds[1]
-    text = layout_lines(top=bottom - CLOVER_GAP)
-    layers = [(*CLOVER_COLOR, items)]
-    for (color, name), shapes in zip(TEXT_COLORS, text):
-        layers.append((color, name, [(s, 45) for s in shapes]))
-    return stitch(layers)
+    leaves = unary_union([sh for sh, _ in items[:4]])
+    ex0, ey0, _, ey1 = unary_union(est).bounds
+    dx = ex0 - CLOVER_SPACE - leaves.bounds[2]
+    dy = (ey0 + ey1) / 2
+    items = [(translate(sh, dx, dy), a) for sh, a in items]
+
+    # Re-centre the clover + "est. 2007" line under "Henderson".
+    line = unary_union([sh for sh, _ in items] + est).bounds
+    shift = -(line[0] + line[2]) / 2
+    items = [(translate(sh, shift, 0), a) for sh, a in items]
+    est = [translate(sh, shift, 0) for sh in est]
+
+    return stitch([
+        (*TEXT_COLORS[0], [(sh, 45) for sh in henderson]),
+        (*CLOVER_COLOR, items),
+        (*TEXT_COLORS[1], [(sh, 45) for sh in est]),
+    ])
 
 
 if __name__ == "__main__":
