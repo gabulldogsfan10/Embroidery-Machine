@@ -2,6 +2,12 @@
 
 Patterns and tools for our Poolin EOC07 embroidery machine.
 
+## Beginner's guide
+
+Start here: [Poolin EOC07 Beginner's Guide](docs/Poolin-EOC07-Beginners-Guide.md)
+([printable PDF](docs/Poolin-EOC07-Beginners-Guide.pdf)). It walks through setup,
+threading, hooping, and stitching the Henderson pattern below.
+
 ## Patterns
 
 | File | What it is | Size | Hoop |
