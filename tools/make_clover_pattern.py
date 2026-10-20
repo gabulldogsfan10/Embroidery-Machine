@@ -1,10 +1,10 @@
-"""Generate the Henderson / est. 2007 lettering with a small four-leaf clover.
+"""Generate the Henderson / est. 2007 lettering with two small four-leaf clovers.
 
-The clover sits on the second line, just left of "est. 2007", and the line is
-centred under "Henderson". It is four heart-shaped leaves around a small
+The clovers sit on the second line, one on each side of "est. 2007", and the
+line is centred under "Henderson". Each clover is four heart-shaped leaves around a small
 centre gap plus a short curved stem that starts where the leaves end. Each
 leaf is filled along its own axis so the four leaves read separately in
-thread. Stitch order: "Henderson", clover, "est. 2007" -- three colors, so the
+thread. Stitch order: "Henderson", both clovers, "est. 2007" -- three colors, so the
 machine stops twice for thread changes.
 
 Usage:
@@ -14,7 +14,7 @@ Usage:
 import os
 
 import pyembroidery
-from shapely.affinity import rotate, translate
+from shapely.affinity import rotate, scale, translate
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
@@ -27,7 +27,7 @@ LEAF_LENGTH = 5.0       # centre to the top of a leaf's lobes
 LEAF_LOBE = 1.6         # radius of each of the two lobes of a heart leaf
 CENTER_GAP = 0.5        # leaves start this far out from the centre
 STEM_WIDTH = 1.0
-CLOVER_SPACE = 2.5      # space between the clover and "est. 2007"
+CLOVER_SPACE = 2.5      # space between each clover and "est. 2007"
 
 
 def heart_leaf():
@@ -66,24 +66,27 @@ def clover():
 
 def build():
     henderson, est = layout_lines()
-    # Centre the clover's leaves on the middle of the "est. 2007" letters,
-    # to their left.
+    # Centre each clover's leaves on the middle of the "est. 2007" letters:
+    # one to the left, and a mirror image (stem curving the other way) to the
+    # right.
     items = clover()
-    leaves = unary_union([sh for sh, _ in items[:4]])
-    ex0, ey0, _, ey1 = unary_union(est).bounds
-    dx = ex0 - CLOVER_SPACE - leaves.bounds[2]
+    leaves = unary_union([sh for sh, _ in items[:4]]).bounds
+    ex0, ey0, ex1, ey1 = unary_union(est).bounds
     dy = (ey0 + ey1) / 2
-    items = [(translate(sh, dx, dy), a) for sh, a in items]
+    left = [(translate(sh, ex0 - CLOVER_SPACE - leaves[2], dy), a) for sh, a in items]
+    right = [(translate(scale(sh, -1, 1, origin=(0, 0)), ex1 + CLOVER_SPACE - leaves[0], dy), -a)
+             for sh, a in items]
+    clovers = left + right
 
-    # Re-centre the clover + "est. 2007" line under "Henderson".
-    line = unary_union([sh for sh, _ in items] + est).bounds
+    # Re-centre the clover + "est. 2007" + clover line under "Henderson".
+    line = unary_union([sh for sh, _ in clovers] + est).bounds
     shift = -(line[0] + line[2]) / 2
-    items = [(translate(sh, shift, 0), a) for sh, a in items]
+    clovers = [(translate(sh, shift, 0), a) for sh, a in clovers]
     est = [translate(sh, shift, 0) for sh in est]
 
     return stitch([
         (*TEXT_COLORS[0], [(sh, 45) for sh in henderson]),
-        (*CLOVER_COLOR, items),
+        (*CLOVER_COLOR, clovers),
         (*TEXT_COLORS[1], [(sh, 45) for sh in est]),
     ])
 
