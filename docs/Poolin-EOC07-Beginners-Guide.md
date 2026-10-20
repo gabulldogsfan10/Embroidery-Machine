@@ -181,6 +181,22 @@ The EOC07 has built-in fonts, so you can build the same design without a compute
 
 **Try it:** stitch Way A and Way B side by side on the same scrap. Compare how the fonts, sizes, and stitch types look. Built-in lettering often uses **satin stitch** (shiny side-to-side columns), while the file uses **fill stitch** (rows of short stitches, like tiny tatami weave).
 
+### Second design: Henderson with a four-leaf clover
+
+Once the plain version stitches cleanly, try [`henderson-est-2007-clover.dst`](../patterns/henderson-est-2007-clover.dst) from the same folder. It is the same lettering with a St. Patrick's Day four-leaf clover above it: 106 x 75 mm (about 4.2" x 3"), roughly 6,300 stitches, still in the 5.5" x 5.5" hoop.
+
+![Stitch preview of the clover design](../patterns/henderson-est-2007-clover.png)
+
+It has **three colors**, so the machine stops twice:
+
+1. **Kelly green:** the four leaves and the stem.
+2. **Forest green:** "Henderson".
+3. **Old gold:** "est. 2007".
+
+Load and run it exactly like Way A. At each stop, change only the top thread; the white bobbin stays in. For an all-green patch, keep the same spool and press Start/Stop at each stop.
+
+**Try it:** watch the clover stitch. Each leaf fills in its own direction, so the four leaves catch the light differently and look separate even though they're one color.
+
 ## Step 6: Run the machine
 
 Goal: a finished stitch-out. Henderson takes roughly 6–8 minutes at full speed; stay at the machine the whole time for your first runs.

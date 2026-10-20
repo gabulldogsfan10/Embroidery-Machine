@@ -116,15 +116,15 @@ def run_along(points, step):
     return out
 
 
-def fill_rows(shape):
-    """Scanline fill at FILL_ANGLE; returns a list of stitch blocks.
+def fill_rows(shape, angle=FILL_ANGLE):
+    """Scanline fill at the given angle (degrees); returns a list of stitch blocks.
 
     Segments on neighbouring rows that overlap are chained into one block so
     the needle zig-zags back and forth; a new block starts where the shape
     branches (e.g. the two legs of an 'n').
     """
     cx, cy = shape.centroid.x, shape.centroid.y
-    rot = rotate(shape, -FILL_ANGLE, origin=(cx, cy))
+    rot = rotate(shape, -angle, origin=(cx, cy))
     minx, miny, maxx, maxy = rot.bounds
     rows = []
     y = miny + FILL_SPACING / 2
@@ -165,7 +165,7 @@ def fill_rows(shape):
             pts = []
             for a, b in chain:
                 pts.extend(run_along([a, b], MAX_STITCH) if not pts else run_along([pts[-1], a, b], MAX_STITCH)[1:])
-            back = rotate(LineString(pts), FILL_ANGLE, origin=(cx, cy)) if len(pts) > 1 else None
+            back = rotate(LineString(pts), angle, origin=(cx, cy)) if len(pts) > 1 else None
             if back is not None:
                 blocks.append(list(back.coords))
     return blocks
@@ -224,44 +224,53 @@ class Stitcher:
         self.p.add_command(pyembroidery.TRIM)
 
 
-def build():
+def layout_lines(lines=LINES, top=0.0):
+    """Shape each text line, centre it horizontally, and stack downward from top.
+
+    Returns one list of glyph shapes per line.
+    """
     font = TTFont(FONT)
-    lines = [text_shapes(font, L["text"], L["cap_height"]) for L in LINES]
-
-    # Centre each line horizontally; stack them with LINE_GAP between.
     placed = []
-    top = 0.0
-    for L, shapes in zip(LINES, lines):
-        u = unary_union(shapes)
-        minx, miny, maxx, maxy = u.bounds
-        dx = -(minx + maxx) / 2
-        dy = top - maxy
-        placed.append([_shift(s, dx, dy) for s in shapes])
+    for L in lines:
+        shapes = text_shapes(font, L["text"], L["cap_height"])
+        minx, miny, maxx, maxy = unary_union(shapes).bounds
+        placed.append([_shift(s, -(minx + maxx) / 2, top - maxy) for s in shapes])
         top = top - (maxy - miny) - LINE_GAP
+    return placed
 
-    # Centre the whole design on the hoop centre (0, 0).
-    allu = unary_union([s for line in placed for s in line])
-    minx, miny, maxx, maxy = allu.bounds
-    oy = -(miny + maxy) / 2
-    placed = [[_shift(s, 0, oy) for s in line] for line in placed]
+
+def stitch(layers):
+    """Stitch color layers in order, centred on the hoop centre (0, 0).
+
+    layers: list of (color, name, [(shape, fill_angle), ...]).
+    Returns the pattern and its (width, height) in mm.
+    """
+    minx, miny, maxx, maxy = unary_union([s for _, _, items in layers for s, _ in items]).bounds
+    ox, oy = -(minx + maxx) / 2, -(miny + maxy) / 2
 
     st = Stitcher()
-    for i, (L, shapes) in enumerate(zip(LINES, placed)):
-        st.p.add_thread({"color": L["color"], "description": L["name"]})
+    for i, (color, name, items) in enumerate(layers):
+        st.p.add_thread({"color": color, "description": name})
         if i > 0:
             st.p.add_command(pyembroidery.COLOR_BREAK)
+        for shape, angle in items:
+            shape = _shift(shape, ox, oy)
             st.pos = None
-        for shape in shapes:
             first = True
-            for path in underlay(shape) + fill_rows(shape):
+            for path in underlay(shape) + fill_rows(shape, angle):
                 if len(path) < 2:
                     continue
                 st.path(path, tie_in=first)
                 first = False
             st.end_block()
-            st.pos = None
     st.p.add_command(pyembroidery.END)
     return st.p, (maxx - minx, maxy - miny)
+
+
+def build():
+    placed = layout_lines()
+    return stitch([(L["color"], L["name"], [(s, FILL_ANGLE) for s in shapes])
+                   for L, shapes in zip(LINES, placed)])
 
 
 def _shift(shape, dx, dy):
