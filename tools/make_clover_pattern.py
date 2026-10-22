@@ -4,7 +4,7 @@ The clovers sit on the second line, one on each side of "est. 2007", and the
 line is centred under "Henderson". Each clover is four heart-shaped leaves around a small
 centre gap plus a short curved stem that starts where the leaves end. Each
 leaf is filled along its own axis so the four leaves read separately in
-thread. Stitch order: "Henderson", both clovers, "est. 2007" -- three colors, so the
+thread. Stitch order: "Henderson", right clover, left clover, "est. 2007" -- three colors, so the
 machine stops twice for thread changes.
 
 Usage:
@@ -18,7 +18,7 @@ from shapely.affinity import rotate, scale, translate
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
-from make_text_pattern import OUT_DIR, layout_lines, stitch
+from make_text_pattern import OUT_DIR, layout_lines, stitch, write_dst
 
 # All sizes in millimetres.
 TEXT_COLORS = [(0x1E5631, "Forest green"), (0x8B6B2E, "Old gold")]
@@ -76,7 +76,9 @@ def build():
     left = [(translate(sh, ex0 - CLOVER_SPACE - leaves[2], dy), a) for sh, a in items]
     right = [(translate(scale(sh, -1, 1, origin=(0, 0)), ex1 + CLOVER_SPACE - leaves[0], dy), -a)
              for sh, a in items]
-    clovers = left + right
+    # "Henderson" ends on the right, so stitch the right clover first, then
+    # the left one, which leaves the needle next to the start of "est. 2007".
+    clovers = right + left
 
     # Re-centre the clover + "est. 2007" + clover line under "Henderson".
     line = unary_union([sh for sh, _ in clovers] + est).bounds
@@ -95,6 +97,6 @@ if __name__ == "__main__":
     os.makedirs(OUT_DIR, exist_ok=True)
     pattern, (w, h) = build()
     base = os.path.join(OUT_DIR, "henderson-est-2007-clover")
-    pyembroidery.write_dst(pattern, base + ".dst")
+    write_dst(pattern, base + ".dst", "Henderson Clover")
     pyembroidery.write_png(pattern, base + ".png")
     print(f"size {w:.1f} x {h:.1f} mm, {pattern.count_stitches()} stitches")

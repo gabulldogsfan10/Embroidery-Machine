@@ -200,12 +200,18 @@ class Stitcher:
             self._add(pyembroidery.STITCH, *q)
 
     def path(self, pts, tie_in=False):
-        if self.pos is None or math.dist(self.pos, pts[0]) > 0.01:
-            if self.pos is not None and math.dist(self.pos, pts[0]) > TRIM_DISTANCE:
+        if self.pos is None or math.dist(self.pos, pts[0]) > TRIM_DISTANCE:
+            # Long move: tie off, trim, and jump, so no thread is left
+            # across the gap.
+            if self.pos is not None:
                 self.tie_off()
                 self.p.add_command(pyembroidery.TRIM)
                 tie_in = True
             self._add(pyembroidery.JUMP, *pts[0])
+            self._add(pyembroidery.STITCH, *pts[0])
+        elif math.dist(self.pos, pts[0]) > 0.01:
+            # Short move inside a shape: stitch across instead of jumping, so
+            # it doesn't leave a loose float.
             self._add(pyembroidery.STITCH, *pts[0])
         if tie_in:
             self.tie(pts)
@@ -251,6 +257,7 @@ def stitch(layers):
     st = Stitcher()
     for i, (color, name, items) in enumerate(layers):
         st.p.add_thread({"color": color, "description": name})
+        st.p.threadlist[-1].catalog_number = ""  # else the header says "None"
         if i > 0:
             st.p.add_command(pyembroidery.COLOR_BREAK)
         for shape, angle in items:
@@ -273,6 +280,16 @@ def build():
                    for L, shapes in zip(LINES, placed)])
 
 
+def write_dst(pattern, path, name):
+    """Write a Tajima DST with the thread colors listed in its header.
+
+    DST stitch data has no colors; machines that read the extended header's
+    color lines show the right colors, others show their own defaults.
+    """
+    pattern.metadata("name", name[:16])  # shown on some machine screens
+    pyembroidery.write_dst(pattern, path, {"version": "extended"})
+
+
 def _shift(shape, dx, dy):
     from shapely.affinity import translate
     return translate(shape, dx, dy)
@@ -282,7 +299,7 @@ if __name__ == "__main__":
     os.makedirs(OUT_DIR, exist_ok=True)
     pattern, (w, h) = build()
     base = os.path.join(OUT_DIR, "henderson-est-2007")
-    pyembroidery.write_dst(pattern, base + ".dst")
+    write_dst(pattern, base + ".dst", "Henderson 2007")
     pyembroidery.write_png(pattern, base + ".png")
     print(f"size {w:.1f} x {h:.1f} mm, {pattern.count_stitches()} stitches, "
-          f"{pattern.count_color_changes() + 1} colors")
+          f"{len(pattern.threadlist)} colors")

@@ -168,6 +168,11 @@ The file [`henderson-est-2007.dst`](../patterns/henderson-est-2007.dst) is in th
 
 **Hand vs machine:** a .DST file is like a stitch chart that the machine reads itself. It holds every stitch position, but not the thread colors. The machine shows default colors on screen; the real colors are whatever spools you put on.
 
+**What you'll see on screen, and why it's normal:**
+
+- **Different colors than this guide.** A .DST file stores stitch positions, not thread colors. The machine fills in its own default colors (often red, blue, yellow) for each color block. Ignore them: what matters is the number of blocks and the order. Thread the spools this guide lists at each stop. Some machines let you tap a color block and pick a closer color, which is only for the preview.
+- **Thin lines connecting letters and lines.** These are **jumps**: places where the machine ties off, trims the thread, lifts the needle, and moves to the next letter. The preview draws them so you can see the path; they are not stitched. If your machine leaves long threads across the fabric instead of trimming them, look in its settings for an automatic trim or jump-trim option and turn it on, or snip the threads after stitching.
+
 ### Way B: type it on the touchscreen
 
 The EOC07 has built-in fonts, so you can build the same design without a computer.
