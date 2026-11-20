@@ -1,12 +1,15 @@
 # Embroidery Machine
 
-Patterns and tools for our Poolin EOC07 embroidery machine.
+Patterns and tools for our Poolin EOC07 and Brother SE2000 embroidery machines.
 
-## Beginner's guide
+## Beginner's guides
 
-Start here: [Poolin EOC07 Beginner's Guide](docs/Poolin-EOC07-Beginners-Guide.md)
-([printable PDF](docs/Poolin-EOC07-Beginners-Guide.pdf)). It walks through setup,
-threading, hooping, and stitching the Henderson pattern below.
+- **Brother SE2000:** [Brother SE2000 Beginner's Guide](docs/Brother-SE2000-Beginners-Guide.md)
+  ([printable PDF](docs/Brother-SE2000-Beginners-Guide.pdf)). Setup, embroidery foot,
+  bobbin, threading, hooping, and stitching the Henderson clover patch (PES file).
+- **Poolin EOC07:** [Poolin EOC07 Beginner's Guide](docs/Poolin-EOC07-Beginners-Guide.md)
+  ([printable PDF](docs/Poolin-EOC07-Beginners-Guide.pdf)). The same steps for the
+  Poolin, using the DST files.
 
 ## Patterns
 
@@ -14,6 +17,7 @@ threading, hooping, and stitching the Henderson pattern below.
 | --- | --- | --- | --- |
 | [`patterns/henderson-est-2007.dst`](patterns/henderson-est-2007.dst) | "Henderson" over "est. 2007", bold serif lettering | 106 x 29 mm (4.2" x 1.1") | 5.5" x 5.5" |
 | [`patterns/henderson-est-2007-clover.dst`](patterns/henderson-est-2007-clover.dst) | Same lettering with a small four-leaf clover on each side of "est. 2007" | 106 x 32 mm (4.2" x 1.3") | 5.5" x 5.5" |
+| [`patterns/henderson-est-2007-clover.pes`](patterns/henderson-est-2007-clover.pes) | Clover design for Brother machines (SE2000), with Brother thread colors: Emerald Green, Leaf Green, Brass | 106 x 32 mm (4.2" x 1.3") | 5" x 7" |
 
 ![Preview](patterns/henderson-est-2007.png)
 
@@ -24,7 +28,7 @@ a thread change, then old gold for "est. 2007". Use the same spool twice
 for a one-color patch. The clover version adds a third color (forest green
 for "Henderson", kelly green for the clovers, old gold for "est. 2007").
 
-To load it, copy the `.dst` file onto a FAT32 USB flash drive, plug it into
+To load it, copy the `.dst` file (Poolin) or `.pes` file (Brother) onto a FAT32 USB flash drive, plug it into
 the machine, and open it from the USB menu on the touchscreen.
 
 ## Making a new lettering pattern
@@ -37,4 +41,4 @@ python3 tools/make_text_pattern.py
 ```
 
 It writes a `.dst` file and a `.png` preview to `patterns/`. Run
-`python3 tools/make_clover_pattern.py` for the clover version.
+`python3 tools/make_clover_pattern.py` for the clover version (`.dst` and `.pes`).
