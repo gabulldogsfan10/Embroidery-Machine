@@ -40,6 +40,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--hi);outline-off
 button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
 button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .grow{flex:1}
+.voice{display:flex;gap:8px;align-items:center;color:var(--muted)}
+select{font:inherit;min-height:42px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:6px 10px}
+.caption em{display:block;color:var(--muted);font-size:.92rem;margin-top:6px}
 .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:var(--accent)}
 .chapters{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0}
@@ -94,14 +97,14 @@ button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1p
         <div class="gate" id="gate" hidden><button class="primary" id="gateBtn"></button></div>
       </div>
       <div class="bar" aria-hidden="true"><i id="prog"></i></div>
-      <div class="caption" aria-live="polite"><b id="capno"></b><span id="cap"></span></div>
+      <div class="caption" aria-live="polite"><b id="capno"></b><span id="cap"></span><em id="capsaid" hidden></em></div>
       <div class="transport">
         <button id="prev" aria-label="Previous chapter">◀ Back</button>
         <button id="play" class="primary">▶ Play</button>
         <button id="replay">↺ Replay step</button>
         <button id="next">Next ▶</button>
         <span class="grow"></span>
-        <button id="voice" aria-pressed="false" hidden>Read aloud: off</button>
+        <label class="voice" id="voicewrap" hidden>Read aloud <select id="voice"><option value="">Off</option><option value="std">Standard</option><option value="scot">Scottish Highlands</option><option value="south">Deep South Georgia</option><option value="cockney">Cockney</option></select></label>
         <button id="speed" aria-label="Playback speed">Speed 1×</button>
       </div>
     </section>
@@ -362,7 +365,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
 };
-let ch = 0, beat = 0, t = 0, playing = false, speed = 1, voice = false, speaking = false, last = 0;
+let ch = 0, beat = 0, t = 0, playing = false, speed = 1, voice = '', speaking = false, last = 0;
 let ticks = store.get('ticks', {});
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const beatDur = (b) => b.d || Math.max(3.5, b.c.split(' ').length * 0.42);
@@ -433,9 +436,41 @@ function drawCanvas() {
   }
 }
 
+// Accents: browsers have no accent setting, so each one rewords the caption in
+// dialect and picks the closest installed voice, with its own pace and pitch.
+const sub = (s, pairs) => pairs.reduce((t, [re, to]) => t.replace(re, to), s);
+const ACCENTS = {
+  std: {rate: 1, pitch: 1, pick: () => null, talk: (s) => s},
+  scot: {rate: 0.95, pitch: 0.9,
+    pick: (vs) => vs.find((v) => /scot|fiona/i.test(v.name + v.lang)) || vs.find((v) => /en[-_]GB/i.test(v.lang)),
+    open: ['Right then,', 'Och,', 'Now then, pal,', 'Aye, so,'], close: ['Nae bother.', 'Braw.', 'Aye, that\'s it.', 'Pure dead simple.'],
+    talk: (s) => sub(s, [[/\bsmall\b/g, 'wee'], [/\ba little\b/g, 'a wee bit'], [/\bdon't\b/gi, 'dinnae'], [/\bcan't\b/g, 'cannae'], [/\bwon't\b/g, 'willnae'], [/\bdoesn't\b/g, 'doesnae'], [/\bisn't\b/g, 'isnae'], [/\bnot\b/g, 'no\''], [/\bdown\b/g, 'doon'], [/\bout\b/g, 'oot'], [/\babout\b/g, 'aboot'], [/\bto the\b/g, 'tae the'], [/\byour\b/g, 'yer'], [/\bYou\b/g, 'Ye'], [/\byou\b/g, 'ye'], [/\bof\b/g, 'o\''], [/\bwith\b/g, 'wi\''], [/\bfirmly\b/g, 'good and tight'], [/\bgently\b/g, 'canny']])},
+  south: {rate: 0.8, pitch: 0.95,
+    pick: (vs) => vs.find((v) => /en[-_]US/i.test(v.lang) && /samantha|female|zira|aria|jenny/i.test(v.name)) || vs.find((v) => /en[-_]US/i.test(v.lang)),
+    open: ['Alright now, sugar,', 'Well now, honey,', 'Now listen here, y\'all,', 'Okay, darlin\','], close: ['Easy as pecan pie.', 'Bless your heart.', 'Ain\'t that somethin\'.', 'You\'re doin\' just fine.'],
+    talk: (s) => sub(s, [[/\babout\b/g, 'right about'], [/\bfirmly\b/g, 'good and snug'], [/\ba little\b/g, 'a little bitty bit'], [/\bsmall\b/g, 'little bitty'], [/\bisn't\b/g, 'ain\'t'], [/\bdoesn't\b/g, 'don\'t'], [/\bfor now\b/g, 'for the time bein\''], [/\bslowly\b/g, 'nice and slow'], [/\bgently\b/g, 'real gentle'], [/\bgoing to\b/g, 'fixin\' to'], [/\b([a-z]{3,})ing\b/g, '$1in\''], [/\byour\b/g, 'your'], [/\bThat's your first design\b/, 'That\'s your very first design, and it\'s pretty as a Georgia peach']])},
+  cockney: {rate: 1.1, pitch: 1.05,
+    pick: (vs) => vs.find((v) => /en[-_]GB/i.test(v.lang) && /daniel|male|george|ryan|thomas/i.test(v.name)) || vs.find((v) => /en[-_]GB/i.test(v.lang)),
+    open: ['Right, guv,', 'Oi oi,', 'Now then, me old china,', 'Awright,'], close: ['Lovely jubbly.', 'Sorted, innit.', 'Bob\'s your uncle.', 'Easy peasy, mate.'],
+    talk: (s) => sub(s, [[/\bisn't\b/g, 'ain\'t'], [/\bdoesn't\b/g, 'don\'t'], [/\bfirmly\b/g, 'good an\' proper'], [/\ba little\b/g, 'a tad'], [/\bsmall\b/g, 'little'], [/\bwith\b/g, 'wiv'], [/\bthe thread\b/g, 'the fred'], [/\bthread\b/g, 'fred'], [/\bthrough\b/g, 'froo'], [/\bthree\b/g, 'free'], [/\bnothing\b/gi, 'nuffink'], [/\b[hH](?!enderson)([aeiou][a-z]+)/g, '\'$1'], [/\b([a-z]{3,})ing\b/g, '$1in\''], [/\byour\b/g, 'yer'], [/\bfabric\b/g, 'bit o\' cloth']])},
+};
+let voices = [];
+function flavour(text) {
+  const a = ACCENTS[voice]; if (!a || !a.open) return text;
+  const k = ch * 7 + beat;
+  let body = a.talk(text);
+  body = /^[A-Z][a-z]/.test(body) && !/^(Henderson|Emerald|Leaf|Brass|Start)/.test(body) ? body[0].toLowerCase() + body.slice(1) : body;
+  return `${a.open[k % a.open.length]} ${body} ${a.close[(k + ch) % a.close.length]}`;
+}
 function say(text) {
-  if (!voice || !('speechSynthesis' in window)) return;
-  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = Math.min(1.4, speed); speaking = true; u.onend = u.onerror = () => { speaking = false; }; speechSynthesis.speak(u); } catch (e) { speaking = false; }
+  const a = ACCENTS[voice];
+  $('capsaid').hidden = !(a && a.open); if (a && a.open) $('capsaid').textContent = '“' + flavour(text) + '”';
+  if (!a || !('speechSynthesis' in window)) return;
+  try {
+    speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(flavour(text)), v = a.pick(voices);
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = Math.min(1.5, speed * a.rate); u.pitch = a.pitch; speaking = true; u.onend = u.onerror = () => { speaking = false; }; speechSynthesis.speak(u);
+  } catch (e) { speaking = false; }
 }
 
 function showBeat(announce = true) {
@@ -443,6 +478,7 @@ function showBeat(announce = true) {
   $('cap').textContent = b.c; $('capno').textContent = `STEP ${beat + 1} OF ${c.beats.length}`;
   $('gate').hidden = !b.gate; if (b.gate) { $('gateBtn').textContent = b.gate; setPlaying(false); }
   if (c.cv) drawCanvas(); else applyBeat();
+  const ac = ACCENTS[voice]; $('capsaid').hidden = !(ac && ac.open); if (ac && ac.open) $('capsaid').textContent = '“' + flavour(b.c) + '”';
   if (announce) say(b.c);
 }
 
@@ -510,8 +546,12 @@ $('next').addEventListener('click', () => load(ch + 1, true));
 $('gateBtn').addEventListener('click', () => { $('gate').hidden = true; beat++; t = 0; setPlaying(true); showBeat(); });
 $('speed').addEventListener('click', () => { speed = speed === 1 ? 1.5 : speed === 1.5 ? 0.75 : 1; $('speed').textContent = `Speed ${speed}×`; });
 if ('speechSynthesis' in window) {
-  $('voice').hidden = false;
-  $('voice').addEventListener('click', () => { voice = !voice; $('voice').setAttribute('aria-pressed', voice); $('voice').textContent = `Read aloud: ${voice ? 'on' : 'off'}`; if (voice) say(CH[ch].beats[beat].c); else { try { speechSynthesis.cancel(); } catch (e) {} speaking = false; } });
+  $('voicewrap').hidden = false;
+  const loadVoices = () => { try { voices = speechSynthesis.getVoices(); } catch (e) {} };
+  loadVoices(); try { speechSynthesis.addEventListener('voiceschanged', loadVoices); } catch (e) {}
+  $('voice').value = store.get('accent', '') in ACCENTS ? store.get('accent', '') : '';
+  voice = $('voice').value;
+  $('voice').addEventListener('change', () => { voice = $('voice').value; store.set('accent', voice); try { speechSynthesis.cancel(); } catch (e) {} speaking = false; say(CH[ch].beats[beat].c); });
 }
 document.addEventListener('keydown', (e) => {
   if (e.target.closest('input,button')) return;
