@@ -290,6 +290,16 @@ def write_dst(pattern, path, name):
     pyembroidery.write_dst(pattern, path, {"version": "extended"})
 
 
+def write_pes(pattern, path, name):
+    """Write a Brother PES (version 6), which carries thread colors and names.
+
+    Brother machines show each color block as the nearest Brother embroidery
+    thread, so give the pattern colors from that chart.
+    """
+    pattern.metadata("name", name[:16])
+    pyembroidery.write_pes(pattern, path, {"version": 6})
+
+
 def _shift(shape, dx, dy):
     from shapely.affinity import translate
     return translate(shape, dx, dy)

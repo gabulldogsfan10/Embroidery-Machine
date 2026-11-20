@@ -7,6 +7,8 @@ leaf is filled along its own axis so the four leaves read separately in
 thread. Stitch order: "Henderson", right clover, left clover, "est. 2007" -- three colors, so the
 machine stops twice for thread changes.
 
+Writes a DST (Poolin) and a PES with Brother thread colors (Brother SE2000).
+
 Usage:
     python3 tools/make_clover_pattern.py
 """
@@ -18,11 +20,14 @@ from shapely.affinity import rotate, scale, translate
 from shapely.geometry import LineString, Point
 from shapely.ops import unary_union
 
-from make_text_pattern import OUT_DIR, layout_lines, stitch, write_dst
+from make_text_pattern import OUT_DIR, layout_lines, stitch, write_dst, write_pes
+
+# Thread colors, in stitch order: "Henderson", clovers, "est. 2007".
+POOLIN_COLORS = [(0x1E5631, "Forest green"), (0x2E8B3A, "Kelly green"), (0x8B6B2E, "Old gold")]
+# Brother embroidery thread chart colors, so the SE2000 names them on screen.
+BROTHER_COLORS = [(0x00673E, "Emerald Green"), (0x66BA49, "Leaf Green"), (0xBA9800, "Brass")]
 
 # All sizes in millimetres.
-TEXT_COLORS = [(0x1E5631, "Forest green"), (0x8B6B2E, "Old gold")]
-CLOVER_COLOR = (0x2E8B3A, "Kelly green")
 LEAF_LENGTH = 5.0       # centre to the top of a leaf's lobes
 LEAF_LOBE = 1.6         # radius of each of the two lobes of a heart leaf
 CENTER_GAP = 0.5        # leaves start this far out from the centre
@@ -64,7 +69,7 @@ def clover():
     return leaves + [(visible, 0)]
 
 
-def build():
+def build(colors=POOLIN_COLORS):
     henderson, est = layout_lines()
     # Centre each clover's leaves on the middle of the "est. 2007" letters:
     # one to the left, and a mirror image (stem curving the other way) to the
@@ -87,9 +92,9 @@ def build():
     est = [translate(sh, shift, 0) for sh in est]
 
     return stitch([
-        (*TEXT_COLORS[0], [(sh, 45) for sh in henderson]),
-        (*CLOVER_COLOR, clovers),
-        (*TEXT_COLORS[1], [(sh, 45) for sh in est]),
+        (*colors[0], [(sh, 45) for sh in henderson]),
+        (*colors[1], clovers),
+        (*colors[2], [(sh, 45) for sh in est]),
     ])
 
 
@@ -100,3 +105,8 @@ if __name__ == "__main__":
     write_dst(pattern, base + ".dst", "Henderson Clover")
     pyembroidery.write_png(pattern, base + ".png")
     print(f"size {w:.1f} x {h:.1f} mm, {pattern.count_stitches()} stitches")
+
+    # Brother (e.g. SE2000) version, with Brother thread colors.
+    pattern, _ = build(BROTHER_COLORS)
+    write_pes(pattern, base + ".pes", "Henderson Clover")
+    pyembroidery.write_png(pattern, base + "-brother.png")
