@@ -7,6 +7,8 @@ Patterns and tools for our Poolin EOC07 and Brother SE2000 embroidery machines.
 - **Brother SE2000:** [Brother SE2000 Beginner's Guide](docs/Brother-SE2000-Beginners-Guide.md)
   ([printable PDF](docs/Brother-SE2000-Beginners-Guide.pdf)). Setup, embroidery foot,
   bobbin, threading, hooping, and stitching the Henderson clover patch (PES file).
+- **Brother SE2000, animated:** [walkthrough/SE2000-First-Stitch.html](walkthrough/SE2000-First-Stitch.html),
+  an interactive step-by-step walkthrough that plays like a video.
 - **Poolin EOC07:** [Poolin EOC07 Beginner's Guide](docs/Poolin-EOC07-Beginners-Guide.md)
   ([printable PDF](docs/Poolin-EOC07-Beginners-Guide.pdf)). The same steps for the
   Poolin, using the DST files.

@@ -1,0 +1,524 @@
+<title>SE2000 First Stitch</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Familjen+Grotesk:wght@500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a "player" (stage + caption + transport) beside a "your turn" card; chapter strip below. */
+:root{
+  --bg:#f1f4f1; --surface:#ffffff; --fg:#16231d; --muted:#55665d; --line:#cdd7d0;
+  --accent:#00673e; --accent-fg:#ffffff; --leaf:#4f9f36; --brass:#96790a; --warn:#b4541a;
+  /* The stage is a light cutting mat in both themes, like a video frame. */
+  --mat:#dfe8e3; --mat-grid:#c3d1ca; --ink:#1d2b25; --body:#fbfcfa; --part:#e3e8e4; --hi:#e0a800;
+  --display:"Familjen Grotesk","Trebuchet MS",sans-serif;
+  --text:"Atkinson Hyperlegible",Verdana,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f1713; --surface:#18221d; --fg:#e7eeea; --muted:#9fb0a7; --line:#2b3a33;
+  --accent:#49b985; --accent-fg:#06140d; --leaf:#7fd163; --brass:#e0bd3a; --warn:#f0995c; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0f1713; --surface:#18221d; --fg:#e7eeea; --muted:#9fb0a7; --line:#2b3a33;
+  --accent:#49b985; --accent-fg:#06140d; --leaf:#7fd163; --brass:#e0bd3a; --warn:#f0995c; color-scheme:dark }
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--text);font-size:16px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px}
+h1{font-family:var(--display);font-size:1.6rem;font-weight:700;margin:0;text-wrap:balance}
+header p{margin:0;color:var(--muted)}
+.cols{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.player{flex:3 1 520px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.side{flex:2 1 300px;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.stage{position:relative;background:var(--mat);border-radius:10px;overflow:hidden;aspect-ratio:8/5;max-width:100%;border:1px solid var(--line)}
+.stage svg,.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.chip{position:absolute;left:10px;top:10px;background:var(--ink);color:#fff;font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:4px}
+.gate{position:absolute;left:0;right:0;bottom:14px;display:flex;justify-content:center}
+.caption{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-height:4.4em;font-size:1.08rem}
+.caption b{font-family:var(--mono);font-size:.75rem;color:var(--muted);display:block;letter-spacing:.05em;margin-bottom:2px}
+.transport{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 14px;min-height:42px}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--hi);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.grow{flex:1}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent)}
+.chapters{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0}
+.chapters button{padding:6px 10px;min-height:38px;font-size:.9rem;display:flex;gap:6px;align-items:center}
+.chapters .n{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.chapters .cur{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.chapters .cur .n{color:inherit}
+.chapters .done .n::after{content:" ✓";color:var(--leaf)}
+.side h2{font-family:var(--display);font-size:1.25rem;margin:0}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.todo{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.todo label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.todo input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--accent)}
+.todo input:checked+span{color:var(--muted);text-decoration:line-through}
+.check{border-top:1px solid var(--line);padding-top:10px}
+.check strong{color:var(--accent)}
+.turn{font-weight:700;color:var(--warn)}
+.note{color:var(--muted);font-size:.9rem;margin:0}
+/* stage drawing */
+.stage svg [data-fx]{transition:transform .9s ease,opacity .6s ease,stroke-dashoffset 1.5s ease}
+.body{fill:var(--body);stroke:var(--ink);stroke-width:3}
+.part{fill:var(--part);stroke:var(--ink);stroke-width:2.5}
+.dark{fill:var(--ink)}
+.screen{fill:#24352e;stroke:var(--ink);stroke-width:3}
+.steel{stroke:#6d7b75;stroke-width:5;stroke-linecap:round;fill:none}
+.thread{fill:none;stroke:#00673e;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.thread.w{stroke:#8a98a8}
+.hi{fill:none;stroke:var(--hi);stroke-width:5}
+.hif{fill:var(--hi);stroke:var(--ink);stroke-width:2}
+.arrow{fill:none;stroke:var(--warn);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.lbl{font-family:var(--text);font-size:21px;font-weight:700;fill:var(--ink)}
+.lbl.s{font-size:17px;font-weight:400}
+.num{font-family:var(--mono);font-size:16px;fill:#fff;text-anchor:middle;dominant-baseline:central}
+.ring{fill:none;stroke:var(--hi);stroke-width:5;animation:pulse 1.2s ease-in-out infinite}
+.spin{animation:spin .5s linear infinite}
+@keyframes pulse{50%{stroke-width:10;opacity:.55}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.stage svg [data-fx]{transition:none}.ring,.spin{animation:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>First Stitch on the Brother SE2000</h1>
+    <p>Watch a step, pause, do it on your machine, tick it off.</p>
+  </header>
+  <div class="cols">
+    <section class="player" aria-label="Walkthrough player">
+      <div class="stage">
+        <svg id="svg" viewBox="0 0 800 500" role="img" aria-label="Animated illustration of the current step"></svg>
+        <canvas id="cv" width="1600" height="1000" hidden></canvas>
+        <span class="chip" id="chip"></span>
+        <div class="gate" id="gate" hidden><button class="primary" id="gateBtn"></button></div>
+      </div>
+      <div class="bar" aria-hidden="true"><i id="prog"></i></div>
+      <div class="caption" aria-live="polite"><b id="capno"></b><span id="cap"></span></div>
+      <div class="transport">
+        <button id="prev" aria-label="Previous chapter">◀ Back</button>
+        <button id="play" class="primary">▶ Play</button>
+        <button id="replay">↺ Replay step</button>
+        <button id="next">Next ▶</button>
+        <span class="grow"></span>
+        <button id="voice" aria-pressed="false" hidden>Read aloud: off</button>
+        <button id="speed" aria-label="Playback speed">Speed 1×</button>
+      </div>
+    </section>
+    <aside class="side">
+      <span class="eyebrow" id="sideno"></span>
+      <h2 id="sidetitle"></h2>
+      <p class="turn" id="turn" hidden>Your turn. Do these on your machine, then press Next.</p>
+      <ul class="todo" id="todo"></ul>
+      <p class="check" id="check"></p>
+      <p class="note">The drawings are simplified. Match them to the diagrams printed on your machine and the quick guide in the box.</p>
+    </aside>
+  </div>
+  <ol class="chapters" id="chapters"></ol>
+</div>
+
+<script>
+const STITCH = __STITCH__;
+const GRID = `<defs><pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#c3d1ca" stroke-width="1.5"/></pattern></defs><rect width="800" height="500" fill="url(#g)"/>`;
+const fx = (o) => 'data-fx ' + Object.entries(o).map(([k, v]) => `data-${k}="${v}"`).join(' ');
+
+// Front view of the machine. Needle is at x=278.
+const mach = (extra = '') => `
+  <rect x="215" y="374" width="130" height="44" rx="6" class="body"/>
+  <rect x="330" y="360" width="390" height="70" rx="8" class="body"/>
+  <rect x="560" y="140" width="160" height="230" rx="10" class="body"/>
+  <rect x="215" y="120" width="505" height="95" rx="20" class="body"/>
+  <rect x="215" y="120" width="125" height="185" rx="16" class="body"/>
+  <rect x="585" y="190" width="110" height="78" rx="6" class="screen"/>
+  <rect x="716" y="278" width="26" height="46" rx="8" class="part"/>
+  <rect x="716" y="386" width="14" height="22" rx="3" class="dark"/>
+  ${extra}`;
+const needle = (a = '') => `<g ${a}><line x1="278" y1="305" x2="278" y2="356" class="steel"/><path d="M262 356h32v8h-32z" class="part"/></g>`;
+const startBtn = (fill = '#3fae5a') => `<circle cx="302" cy="262" r="11" fill="${fill}" stroke="#1d2b25" stroke-width="2.5"/>`;
+const flatbed = (a = '') => `<rect ${a} x="150" y="360" width="190" height="70" rx="8" class="body"/>`;
+const unit = (a = '', car = '') => `<g ${a}><rect x="50" y="372" width="290" height="58" rx="8" class="body"/><g ${car}><rect x="80" y="350" width="130" height="24" rx="5" class="part"/><rect x="200" y="340" width="26" height="14" rx="3" class="part"/></g></g>`;
+
+const SCENES = {
+  setup: () => GRID + mach(needle() + startBtn('#c9d2cc')) + flatbed() + `
+    <g ${fx({show: 0})}><path class="arrow" d="M135 330H30M30 330l14-10M30 330l14 10"/><text x="34" y="312" class="lbl">12 in clear</text>
+      <path class="arrow" d="M470 105V40M470 40l-10 14M470 40l10 14"/><text x="486" y="62" class="lbl">12 in behind</text></g>
+    <g ${fx({hide: 1})}><rect x="250" y="290" width="56" height="16" class="hif" transform="rotate(-18 278 298)"/><rect x="600" y="150" width="70" height="16" class="hif" transform="rotate(8 635 158)"/><rect x="380" y="352" width="64" height="16" class="hif"/><text x="452" y="346" class="lbl s">tape and foam</text></g>
+    <g ${fx({only: 2})}><circle cx="723" cy="397" r="24" class="ring"/><text x="590" y="466" class="lbl">Power switch: off</text></g>`,
+
+  unit: () => GRID + mach(needle() + `<g ${fx({show: 2})}><rect x="590" y="195" width="100" height="68" rx="4" fill="#bfe8d2"/></g>` + startBtn('#c9d2cc'))
+    + flatbed(fx({move: '0:-170,0', hide: 0}))
+    + unit(fx({from: '1:-230,0'}), fx({move: '2:70,0'})) + `
+    <g ${fx({only: 0})}><path class="arrow" d="M150 340H60M60 340l14-10M60 340l14 10"/><text x="40" y="70" class="lbl">Flat bed slides off</text></g>
+    <g ${fx({only: 1})}><path class="arrow" d="M60 340h110M170 340l-14-10M170 340l-14 10"/><text x="40" y="70" class="lbl">Embroidery unit slides on</text><circle cx="338" cy="398" r="20" class="ring"/></g>
+    <g ${fx({only: 2})}><circle cx="723" cy="397" r="24" class="ring"/><text x="40" y="70" class="lbl">Carriage moves. Hands clear.</text></g>
+    <g ${fx({only: 3})}><rect x="580" y="185" width="120" height="88" rx="8" class="ring"/><text x="450" y="466" class="lbl">Embroidery menu</text></g>`,
+
+  foot: () => GRID + `
+    <rect x="250" y="0" width="300" height="130" class="body"/>
+    <rect x="300" y="120" width="34" height="210" class="part"/><rect x="290" y="300" width="54" height="36" rx="4" class="part"/>
+    <line x1="317" y1="336" x2="317" y2="440" class="steel"/>
+    <rect x="400" y="120" width="40" height="200" class="part"/>
+    <circle cx="462" cy="296" r="13" class="hif" ${fx({rot: '3:200:462,296'})}/><path d="M454 296h16" stroke="#1d2b25" stroke-width="3" ${fx({rot: '3:200:462,296'})}/>
+    <g ${fx({move: '1:60,140', hide: 1})}><path d="M392 290h56v44h-56z" class="part"/><path d="M360 334h130l16 26H344z" class="part"/><text x="520" y="352" class="lbl s">sewing foot + holder</text></g>
+    <g ${fx({from: '2:40,150'})}><path d="M404 286h34v70h-34z" class="body"/><path d="M290 356h150v14H290z" class="body"/><circle cx="317" cy="363" r="20" fill="none" stroke="#1d2b25" stroke-width="5"/>
+      <path class="thread w" d="M438 300c60-10 90-60 90-140" ${fx({show: 2})}/></g>
+    <g ${fx({only: 0})}><rect x="590" y="40" width="160" height="110" rx="8" class="screen"/><rect x="640" y="88" width="60" height="42" rx="6" class="hif"/><path d="M652 88v-14a18 18 0 0 1 36 0v14" class="hi"/><text x="596" y="182" class="lbl">Lock key</text></g>
+    <g ${fx({only: 2})}><circle cx="462" cy="296" r="26" class="ring"/><text x="500" y="250" class="lbl">Foot UH: notch to screw</text></g>
+    <g ${fx({only: 3})}><circle cx="462" cy="296" r="26" class="ring"/><text x="500" y="250" class="lbl">Tighten firmly</text></g>
+    <g ${fx({show: 4})}><rect x="500" y="130" width="56" height="34" rx="5" class="dark"/><text x="566" y="154" class="lbl">Jack, back left</text></g>
+    <text x="40" y="470" class="lbl s">Close-up of the needle area</text>`,
+
+  wind: () => GRID + mach(needle()) + flatbed() + `
+    <g ${fx({only: '2-2'})}>${startBtn('#f08a24')}</g><g ${fx({hide: '2-2'})}>${startBtn('#c9d2cc')}</g>
+    <rect x="430" y="82" width="66" height="38" rx="6" fill="#f4f6f8" stroke="#1d2b25" stroke-width="2.5"/><rect x="496" y="90" width="12" height="22" rx="3" class="part"/>
+    <circle cx="545" cy="100" r="8" class="part"/><circle cx="592" cy="106" r="12" class="part"/>
+    <path class="thread w" pathLength="1" stroke-dasharray="1" d="M496 96L545 92L592 94 L600 112 L650 100" ${fx({draw: 0})}/>
+    <g ${fx({move: '2-2:16,0'})}><rect x="644" y="100" width="12" height="22" class="dark"/>
+      <g ${fx({show: 1})}><rect x="634" y="84" width="32" height="22" rx="4" class="body"/>
+        <rect x="638" y="88" width="24" height="14" fill="#8a98a8" ${fx({show: 3})}/>
+        <g ${fx({only: '2-2', spin: '2-2'})} style="transform-origin:650px 95px"><path d="M640 95h20" stroke="#8a98a8" stroke-width="6"/></g></g></g>
+    <g ${fx({only: 0})}><text x="40" y="60" class="lbl">Follow the winding diagram on top</text></g>
+    <g ${fx({only: 1})}><circle cx="650" cy="96" r="30" class="ring"/><text x="40" y="60" class="lbl">Bobbin on the winder shaft</text></g>
+    <g ${fx({only: 2})}><path class="arrow" d="M640 60h44M684 60l-12-9M684 60l-12 9"/><text x="40" y="60" class="lbl">Shaft right, then Start/Stop</text><circle cx="302" cy="262" r="24" class="ring"/></g>
+    <g ${fx({only: 3})}><path class="arrow" d="M690 60h-44M646 60l12-9M646 60l12 9"/><text x="40" y="60" class="lbl">Shaft back to the left</text></g>`,
+
+  bobbin: () => GRID + `
+    <rect x="120" y="60" width="560" height="380" rx="18" class="body"/>
+    <circle cx="400" cy="120" r="7" class="dark"/><text x="420" y="127" class="lbl s">needle</text>
+    <circle cx="400" cy="290" r="96" class="part"/>
+    <path d="M300 350l-34 34" class="steel"/><path d="M252 372l24 24" stroke="#1d2b25" stroke-width="4"/>
+    <g ${fx({from: '1:0,-90'})}><circle cx="400" cy="290" r="74" fill="#fff" stroke="#1d2b25" stroke-width="3"/><circle cx="400" cy="290" r="58" fill="none" stroke="#8a98a8" stroke-width="20"/><circle cx="400" cy="290" r="12" class="dark"/>
+      <path class="thread w" d="M400 222H330" /></g>
+    <g ${fx({only: 1})}><path class="arrow" d="M470 200a100 100 0 0 0-150 0M320 200l4-20M320 200l20-2"/><text x="250" y="178" class="lbl">Unwinds to the left</text></g>
+    <path class="thread w" pathLength="1" stroke-dasharray="1" d="M330 222C290 240 290 320 304 348L262 388" ${fx({draw: 2})}/>
+    <g ${fx({only: 2})}><circle cx="300" cy="350" r="26" class="ring"/><text x="140" y="430" class="lbl">Around the tab, through the slit</text></g>
+    <g ${fx({hide: '0-2', move: '0-2:150,60'})}><rect x="290" y="180" width="240" height="220" rx="24" fill="#ffffffcc" stroke="#1d2b25" stroke-width="3"/><text x="356" y="300" class="lbl s">bobbin cover</text></g>
+    <g ${fx({only: 0})}><rect x="548" y="270" width="54" height="26" rx="6" class="hif"/><path class="arrow" d="M556 250h44M600 250l-12-9M600 250l-12 9"/><text x="470" y="230" class="lbl">Latch right</text></g>
+    <g ${fx({only: 3})}><circle cx="258" cy="386" r="26" class="ring"/><text x="140" y="470" class="lbl">Cutter trims it. Cover on, tab first.</text></g>
+    <text x="140" y="92" class="lbl s">Looking down at the needle plate</text>`,
+
+  thread: () => GRID + mach('') + flatbed() + `
+    <g ${fx({move: '4-4:0,6'})}>${needle()}</g>${startBtn('#c9d2cc')}
+    <rect x="258" y="134" width="8" height="150" rx="4" class="dark"/><rect x="296" y="134" width="8" height="110" rx="4" class="dark"/>
+    <g ${fx({show: 1})}><rect x="430" y="82" width="66" height="38" rx="6" fill="#00673e" stroke="#1d2b25" stroke-width="2.5"/><rect x="418" y="88" width="12" height="26" rx="3" class="part"/></g>
+    <path class="thread" pathLength="1" stroke-dasharray="1" d="M430 96L372 96L330 112L300 128V240" ${fx({draw: 1})}/>
+    <path class="thread" pathLength="1" stroke-dasharray="1" d="M300 240Q300 262 281 262Q262 262 262 240V140" ${fx({draw: 2})}/>
+    <path class="thread" pathLength="1" stroke-dasharray="1" d="M262 140Q270 128 274 140V300" ${fx({draw: 3})}/>
+    <path class="thread" pathLength="1" stroke-dasharray="1" d="M274 300L278 344" ${fx({draw: 4})}/>
+    <path class="thread" pathLength="1" stroke-dasharray="1" d="M278 344Q300 372 350 350" ${fx({draw: 5})}/>
+    <g ${fx({show: 1})}><circle cx="372" cy="96" r="13" class="dark"/><text x="372" y="96" class="num">1</text><circle cx="300" cy="186" r="13" class="dark"/><text x="300" y="186" class="num">2</text></g>
+    <g ${fx({show: 2})}><circle cx="281" cy="262" r="13" class="dark"/><text x="281" y="262" class="num">3</text><circle cx="262" cy="150" r="13" class="dark"/><text x="262" y="150" class="num">4</text></g>
+    <g ${fx({show: 3})}><circle cx="274" cy="296" r="13" class="dark"/><text x="274" y="296" class="num">6</text></g>
+    <rect x="222" y="270" width="30" height="12" rx="4" class="hif" ${fx({move: '4-4:0,46'})}/>
+    <g ${fx({only: 0})}><path class="arrow" d="M240 400v-40M240 360l-10 13M240 360l10 13"/><text x="40" y="60" class="lbl">Needle up. Foot UP. Screen locked.</text><circle cx="278" cy="352" r="28" class="ring"/></g>
+    <g ${fx({only: 1})}><text x="40" y="60" class="lbl">Top guides, then down the right channel</text></g>
+    <g ${fx({only: 2})}><circle cx="262" cy="138" r="26" class="ring"/><text x="40" y="60" class="lbl">Up the left, over the take-up lever</text></g>
+    <g ${fx({only: 3})}><text x="40" y="60" class="lbl">Down to the guide above the needle</text></g>
+    <g ${fx({only: 4})}><circle cx="237" cy="322" r="26" class="ring"/><text x="40" y="60" class="lbl">Disk 7, then threader lever down</text></g>
+    <g ${fx({only: 5})}><text x="40" y="60" class="lbl">4 inches under the foot, to the back</text></g>`,
+
+  hoop: () => {
+    const iso = (y) => `transform="translate(0 ${y}) skewX(-28) scale(1 .5)"`;
+    const frame = (c, w) => `<rect x="330" y="0" width="330" height="240" rx="34" fill="none" stroke="${c}" stroke-width="${w}"/>`;
+    return GRID + `
+    <g ${iso(330)}>${frame('#1d2b25', 30)}${frame('#aab7b0', 22)}<rect x="660" y="96" width="46" height="46" rx="8" class="hif" ${fx({rot: '4:180:683,119'})}/></g>
+    <g ${fx({from: '1:0,-150'})}><g ${iso(318)}><rect x="290" y="-36" width="410" height="312" fill="#ffffff" stroke="#8a98a8" stroke-width="3"/></g></g>
+    <g ${fx({from: '2:0,-200'})}><g ${iso(306)}><rect x="270" y="-54" width="450" height="348" fill="#e9dfc8" stroke="#1d2b25" stroke-width="3"/><path d="M480 120h30M495 105v30" stroke="#b4541a" stroke-width="5"/></g></g>
+    <g ${fx({from: '3:0,-250'})}><g ${iso(296)}>${frame('#1d2b25', 22)}${frame('#f4f6f5', 14)}
+      <g ${fx({hide: 4})}><rect x="345" y="15" width="300" height="210" fill="#bfe8d266"/><path d="M495 15v210M345 120h300M420 15v210M570 15v210M345 67h300M345 172h300" stroke="#00673e" stroke-width="2"/></g></g></g>
+    <g ${fx({only: 0})}><text x="40" y="60" class="lbl">Outer frame on the table</text><text x="40" y="90" class="lbl s">Loosen the screw, lift out the inner frame</text></g>
+    <g ${fx({only: 1})}><text x="40" y="60" class="lbl">1. Stabilizer</text></g>
+    <g ${fx({only: 2})}><text x="40" y="60" class="lbl">2. Fabric, right side up</text></g>
+    <g ${fx({only: 3})}><text x="40" y="60" class="lbl">3. Inner frame + grid on your cross</text></g>
+    <g ${fx({only: 4})}><text x="40" y="60" class="lbl">Tighten. Drum-tight. Grid off.</text>
+      <path class="arrow" d="M150 410h-60M90 410l13-9M90 410l13 9M720 300h50M770 300l-13-9M770 300l-13 9"/></g>`;
+  },
+
+  load: () => GRID + `
+    <rect x="110" y="50" width="500" height="350" rx="20" class="body"/><rect x="140" y="80" width="440" height="290" rx="8" class="screen"/>
+    <rect x="610" y="250" width="26" height="50" rx="4" class="dark"/>
+    <g ${fx({from: '0:110,0'})}><rect x="636" y="258" width="90" height="34" rx="6" class="hif"/><rect x="622" y="264" width="16" height="22" class="part"/></g>
+    <g ${fx({only: '0-1'})}><g fill="#bfe8d2"><rect x="170" y="110" width="80" height="70" rx="8"/><rect x="270" y="110" width="80" height="70" rx="8"/><rect x="370" y="110" width="80" height="70" rx="8"/></g>
+      <rect x="470" y="110" width="80" height="70" rx="8" fill="#e0a800"/><path d="M510 124v36M498 140l12-14 12 14M498 160h24" stroke="#1d2b25" stroke-width="4" fill="none"/>
+      <text x="170" y="230" class="lbl s" fill="#fff" style="fill:#fff">Embroidery</text></g>
+    <g ${fx({only: 1})}><rect x="462" y="102" width="96" height="86" rx="12" class="ring"/><text x="130" y="450" class="lbl">Touch the USB icon</text></g>
+    <g ${fx({only: 0})}><text x="130" y="450" class="lbl">USB drive into the port on the right</text></g>
+    <g ${fx({only: 2})}><rect x="170" y="110" width="170" height="110" rx="8" fill="#f4f6f5"/><text x="186" y="160" style="font:700 22px Georgia,serif;fill:#00673e">Henderson</text><text x="214" y="190" style="font:700 13px Georgia,serif;fill:#96790a">♣ est. 2007 ♣</text>
+      <rect x="162" y="102" width="186" height="126" rx="12" class="ring"/><rect x="450" y="300" width="100" height="46" rx="8" fill="#e0a800"/><text x="478" y="331" class="lbl">Set</text>
+      <text x="130" y="450" class="lbl">Touch the thumbnail, then Set</text></g>
+    <g ${fx({only: 3})}><rect x="170" y="110" width="110" height="150" rx="8" fill="none" stroke="#bfe8d2" stroke-width="4"/><text x="190" y="195" class="lbl" style="fill:#fff">5 × 7</text>
+      <rect x="310" y="150" width="90" height="110" rx="8" fill="none" stroke="#6d7b75" stroke-width="4"/><text x="326" y="215" class="lbl s" style="fill:#9fb0a7">4 × 4</text>
+      <rect x="162" y="102" width="126" height="166" rx="12" class="ring"/><text x="130" y="450" class="lbl">Choose the 5 × 7 frame</text></g>
+    <g ${fx({only: 4})}><rect x="170" y="110" width="210" height="130" rx="8" fill="#f4f6f5"/><text x="196" y="170" style="font:700 26px Georgia,serif;fill:#00673e">Henderson</text><text x="232" y="204" style="font:700 15px Georgia,serif;fill:#96790a">♣ est. 2007 ♣</text>
+      <g class="lbl s"><rect x="410" y="110" width="26" height="26" fill="#00673e"/><text x="446" y="130" style="fill:#fff">Emerald Green</text><rect x="410" y="150" width="26" height="26" fill="#66ba49"/><text x="446" y="170" style="fill:#fff">Leaf Green</text><rect x="410" y="190" width="26" height="26" fill="#ba9800"/><text x="446" y="210" style="fill:#fff">Brass</text></g>
+      <text x="130" y="450" class="lbl">Embroidery screen: three colors</text></g>
+    <text x="640" y="330" class="lbl s">USB</text>`,
+
+  attach: () => GRID + mach('') + unit('', 'transform="translate(70 0)"') + `
+    <g ${fx({move: '0-1:0,-12'})}>${needle()}</g>
+    <g ${fx({only: '0-1'})}>${startBtn('#d2553f')}</g><g ${fx({show: 2})}>${startBtn('#3fae5a')}</g>
+    <g ${fx({from: '0:-40,60'})}><rect x="186" y="362" width="200" height="10" rx="4" class="dark"/><rect x="200" y="358" width="172" height="5" fill="#e9dfc8"/><rect x="270" y="346" width="26" height="16" rx="3" class="part"/></g>
+    <rect x="262" y="328" width="40" height="10" rx="4" class="hif" style="transform-origin:296px 333px" ${fx({rot: '0-0:-50:296,333'})}/>
+    <g ${fx({only: 0})}><path class="arrow" d="M150 440l60-50M210 390l-18 3M210 390l-4 17"/><text x="40" y="60" class="lbl">Hoop into the frame holder</text></g>
+    <g ${fx({only: 1})}><circle cx="282" cy="333" r="30" class="ring"/><text x="40" y="60" class="lbl">Securing lever down, level with the frame</text></g>
+    <g ${fx({only: 2})}><circle cx="302" cy="262" r="24" class="ring"/><text x="40" y="60" class="lbl">Foot down. Light is green.</text></g>`,
+};
+
+const CH = [
+  {t: 'What you\'ll make', cv: 'intro', beats: [
+    {c: 'This is the Henderson clover patch, your first design on the SE2000.'},
+    {c: 'It uses three thread colors: Emerald Green, Leaf Green and Brass. The stitching itself takes about 15 minutes.'},
+    {c: 'Each chapter shows one step. Watch it, do it on your machine, tick the boxes, then press Next.'}],
+   todo: ['Machine, embroidery unit and 5 × 7 frame out of the box', 'Three top threads, white bobbin thread, 75/11 needle', 'Stabilizer and scrap cotton, about 10 × 12 inches', 'PES file copied to a USB flash drive'],
+   check: 'Everything is on the table before you start.'},
+  {t: 'Set up the table', s: 'setup', beats: [
+    {c: 'Put the machine on a solid table. Leave about 12 inches clear on the left and behind it for the moving hoop.'},
+    {c: 'Remove every piece of tape, foam and cardboard, including around the needle.'},
+    {c: 'Keep the power off for now. The switch is on the right side.'}],
+   todo: ['Solid table, 12 inches clear left and behind', 'All packing material removed', 'Power is off'],
+   check: 'Nothing is taped down and nothing sits near the left side of the machine.'},
+  {t: 'Attach the embroidery unit', s: 'unit', beats: [
+    {c: 'With the power off, slide the flat bed attachment off to the left.'},
+    {c: 'Line the embroidery unit up with the connection port and push it straight in until it seats.'},
+    {c: 'Plug in and switch on. Keep your hands clear: the carriage moves to its starting position.'},
+    {c: 'The screen now shows the embroidery menu.'}],
+   todo: ['Flat bed attachment removed', 'Embroidery unit pushed fully in', 'Power on, carriage has moved'],
+   check: 'The unit sits flush and doesn\'t wiggle. The screen shows embroidery options.'},
+  {t: 'Put on embroidery foot UH', s: 'foot', beats: [
+    {c: 'Raise the needle with the needle position button. Touch the lock key so the machine can\'t start.'},
+    {c: 'Raise the presser foot lever. Loosen the holder screw and take off the sewing foot with its holder.'},
+    {c: 'Hold embroidery foot UH from the right and line its notch up with the screw.'},
+    {c: 'Tighten the screw firmly with the disc-shaped screwdriver.'},
+    {c: 'Plug the foot\'s cord into the jack on the back left. Put in a fresh 75/11 needle, flat side to the back. Touch unlock.'}],
+   todo: ['Screen locked before touching the foot', 'Sewing foot and holder removed', 'Foot UH screwed on tight and plugged in', 'Fresh 75/11 needle, screen unlocked'],
+   check: 'The foot doesn\'t move when you wiggle it. Turn the handwheel toward you once: the needle passes through the foot without touching it.'},
+  {t: 'Wind the bobbin', s: 'wind', beats: [
+    {c: 'Put the white bobbin thread on the spool pin with its cap. Follow the winding diagram printed on top of the machine.'},
+    {c: 'Wrap the end around an empty bobbin a few times and set it on the winder shaft.'},
+    {c: 'Push the shaft to the right and press Start/Stop. The light turns orange while it winds.'},
+    {c: 'When it\'s full, cut the thread and push the shaft back to the left. The needle won\'t stitch while the shaft is to the right.'}],
+   todo: ['Bobbin wound with white 60-weight bobbin thread', 'Winder shaft pushed back to the left'],
+   check: 'The bobbin is evenly full and the shaft is back on the left.'},
+  {t: 'Load the bobbin', s: 'bobbin', beats: [
+    {c: 'Touch the lock key and raise the presser foot. Slide the bobbin cover latch to the right and lift the cover off.'},
+    {c: 'Drop the bobbin in so the thread unwinds to the left.'},
+    {c: 'Hold the bobbin down with a finger. Guide the thread around the tab and through the slit in the needle plate.'},
+    {c: 'The built-in cutter trims it. Put the cover back, tab end first, and touch unlock.'}],
+   todo: ['Bobbin in, thread unwinding to the left', 'Thread through the slit and tension spring', 'Cover back on, screen unlocked'],
+   check: 'Before closing the cover, pull the thread gently: the bobbin turns with light resistance. If it spins freely, redo the thread path.'},
+  {t: 'Thread the top thread', s: 'thread', beats: [
+    {c: 'Press the needle position button so the needle is up. Lock the screen and raise the presser foot. Foot up opens the tension discs.'},
+    {c: 'Put Emerald Green on the spool pin with the cap. Follow the numbers: through the top guides and down the right channel.'},
+    {c: 'Around the bottom, up the left channel, and over the take-up lever at the top.'},
+    {c: 'Back down to the guide just above the needle.'},
+    {c: 'Hook the thread on the disk marked 7, lower the foot, pull the needle threader lever down until it clicks, then let it rise slowly.'},
+    {c: 'Raise the foot and pull about 4 inches of thread under it toward the back. Touch unlock.'}],
+   todo: ['Presser foot was UP while threading', 'Thread goes over the take-up lever', 'Needle threaded, 4-inch tail to the back'],
+   check: 'Foot down: the thread pulls with firm resistance. Foot up: it slides easily. No difference means re-thread.'},
+  {t: 'Hoop the fabric', s: 'hoop', beats: [
+    {c: 'Mark the center of your fabric with a small cross. Loosen the frame screw and lift out the inner frame.'},
+    {c: 'Lay the stabilizer over the outer frame.'},
+    {c: 'Lay the fabric on top, right side up.'},
+    {c: 'Press the inner frame in with the grid sheet, lining the grid\'s center up with your cross.'},
+    {c: 'Tighten the screw a little, smooth the fabric until it\'s drum-tight, then tighten fully and remove the grid.'}],
+   todo: ['Center cross marked on the fabric', 'Stabilizer under the fabric', 'Inner frame pressed in evenly', 'Screw tight, grid sheet removed'],
+   check: 'Tap the fabric: it sounds like a drum and doesn\'t slide between the frames.'},
+  {t: 'Load the design', s: 'load', beats: [
+    {c: 'Copy the PES file to a USB flash drive and plug it into the port on the right side.'},
+    {c: 'On the embroidery screen, touch the USB icon.'},
+    {c: 'Touch the Henderson Clover thumbnail, then Set.'},
+    {c: 'Choose the 5 by 7 frame. Leave the size alone for your first run.'},
+    {c: 'Touch Embroidery. The color list shows Emerald Green, Leaf Green, then Brass.'}],
+   todo: ['Design opened from USB', '5 × 7 frame selected', 'Three colors listed on screen'],
+   check: 'The design sits inside the frame outline on the screen.'},
+  {t: 'Attach the hoop', s: 'attach', beats: [
+    {c: 'Raise the presser foot. Slide the frame into the frame holder on the carriage, matching its arrow to the holder\'s mark.'},
+    {c: 'Push the frame-securing lever down until it\'s level with the frame.'},
+    {c: 'Clear the area around the hoop and lower the presser foot. The Start/Stop light turns green.'}],
+   todo: ['Hoop locked into the frame holder', 'Area around the hoop is clear', 'Presser foot down, light is green'],
+   check: 'The hoop doesn\'t wiggle. A red light means the foot is up, the hoop isn\'t seated, or the screen has a message.'},
+  {t: 'Stitch it', cv: 'stitch', beats: [
+    {c: 'Hold the thread tail lightly to the side and press Start/Stop.'},
+    {c: 'Henderson stitches in Emerald Green. Watch for flat stitches with no loops. Rattling or loops means press Start/Stop.', run: 0, d: 18},
+    {c: 'The machine trims, stops and raises the foot. Pull the green thread out from the needle end and thread Leaf Green.', gate: 'Leaf Green is threaded. Continue'},
+    {c: 'Both clovers stitch in Leaf Green, the right one first.', run: 1, d: 7},
+    {c: 'It stops again. Change the top thread to Brass. The white bobbin stays in.', gate: 'Brass is threaded. Continue'},
+    {c: 'est. 2007 stitches in Brass.', run: 2, d: 7},
+    {c: 'The screen shows Finished embroidering. Colors 3 of 3.'}],
+   todo: ['Henderson stitched in Emerald Green', 'Clovers stitched in Leaf Green', 'est. 2007 stitched in Brass'],
+   check: 'Turn the hoop over: mostly white bobbin thread with a thin edge of color around each letter.'},
+  {t: 'Finish the patch', cv: 'finish', beats: [
+    {c: 'Raise the foot, lift the frame-securing lever and pull the hoop toward you.'},
+    {c: 'Loosen the screw and push the inner frame out from behind. Don\'t pull on the stitches.'},
+    {c: 'Trim the stabilizer to about a quarter inch around the design and snip any thread tails.'},
+    {c: 'Press from the back on a towel. That\'s your first design.'}],
+   todo: ['Hoop removed, fabric out', 'Stabilizer trimmed, tails snipped', 'Pressed from the back'],
+   check: 'A clean patch with no loose threads.'},
+];
+
+const $ = (id) => document.getElementById(id);
+const svg = $('svg'), cv = $('cv'), ctx = cv.getContext('2d');
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+let ch = 0, beat = 0, t = 0, playing = false, speed = 1, voice = false, speaking = false, last = 0;
+let ticks = store.get('ticks', {});
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const beatDur = (b) => b.d || Math.max(3.5, b.c.split(' ').length * 0.42);
+const inRange = (spec, b) => { const [a, z] = String(spec).split('-'); return b >= +a && (z === undefined || b <= +z); };
+
+function applyBeat() {
+  svg.querySelectorAll('[data-fx]').forEach((el) => {
+    const d = el.dataset; let op = 1, tf = '';
+    if (d.show !== undefined && beat < +d.show) op = 0;
+    if (d.only !== undefined && !inRange(d.only.includes('-') ? d.only : d.only + '-' + d.only, beat)) op = 0;
+    if (d.hide !== undefined && inRange(d.hide, beat)) op = 0;
+    if (d.from) { const [n, xy] = d.from.split(':'); if (beat < +n) { const [x, y] = xy.split(','); tf += `translate(${x}px,${y}px) `; op = 0; } }
+    if (d.move) { const [r, xy] = d.move.split(':'); if (inRange(r, beat)) { const [x, y] = xy.split(','); tf += `translate(${x}px,${y}px) `; } }
+    if (d.rot) { const [r, deg, o] = d.rot.split(':'); const [x, y] = o.split(','); el.style.transformOrigin = `${x}px ${y}px`; if (inRange(r, beat)) tf += `rotate(${deg}deg)`; }
+    if (d.draw !== undefined) el.style.strokeDashoffset = beat >= +d.draw ? 0 : 1;
+    if (d.spin) el.classList.toggle('spin', inRange(d.spin, beat) && playing);
+    el.style.opacity = op; el.style.transform = tf || 'none';
+  });
+}
+
+// Stitch canvas: design units are 0.1 mm, centred on the hoop centre.
+const K = 1.2, CX = 800, CY = 500;
+const counts = STITCH.map((b) => b.paths.reduce((n, p) => n + p.length / 2, 0));
+function drawCanvas() {
+  const c = CH[ch], b = c.beats[beat];
+  ctx.fillStyle = '#e9dfc8'; ctx.fillRect(0, 0, 1600, 1000);
+  ctx.strokeStyle = '#ddd0b3'; ctx.lineWidth = 1;
+  for (let x = 0; x < 1600; x += 8) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 1000); ctx.stroke(); }
+  for (let y = 0; y < 1000; y += 8) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1600, y); ctx.stroke(); }
+  ctx.strokeStyle = '#b4541a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(CX - 16, CY); ctx.lineTo(CX + 16, CY); ctx.moveTo(CX, CY - 16); ctx.lineTo(CX, CY + 16); ctx.stroke();
+  let done = STITCH.length, frac = 1;
+  if (c.cv === 'stitch') {
+    done = 0; frac = 0;
+    for (let i = 0; i <= beat; i++) { const bb = c.beats[i]; if (bb.run !== undefined) { if (i < beat) done = bb.run + 1; else { done = bb.run; frac = Math.min(1, t / beatDur(bb)); } } }
+    if (b.run === undefined) frac = 0;
+  }
+  let tip = null, total = 0;
+  STITCH.forEach((blk, i) => {
+    if (i > done) return;
+    let limit = i < done ? Infinity : Math.floor(counts[i] * frac), n = 0;
+    ctx.strokeStyle = blk.color; ctx.lineWidth = 2.6; ctx.lineJoin = 'round';
+    for (const p of blk.paths) {
+      if (n >= limit) break;
+      ctx.beginPath();
+      for (let j = 0; j < p.length && n < limit; j += 2, n++) {
+        const x = CX + p[j] * K, y = CY + p[j + 1] * K;
+        j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        if (i === done) tip = [x, y];
+      }
+      ctx.stroke();
+    }
+    total += Math.min(n, counts[i]);
+  });
+  if (c.cv === 'stitch' && tip && frac < 1 && b.run !== undefined) {
+    ctx.strokeStyle = '#6d7b75'; ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(tip[0], tip[1] - 6); ctx.lineTo(tip[0], tip[1] - 150); ctx.stroke();
+    ctx.fillStyle = '#1d2b25'; ctx.beginPath(); ctx.arc(tip[0], tip[1], 5, 0, 7); ctx.fill();
+  }
+  if (c.cv === 'stitch') {
+    const all = counts.reduce((a, n) => a + n, 0), col = Math.min(3, b.run !== undefined ? b.run + 1 : Math.max(done, 1));
+    ctx.fillStyle = '#1d2b25'; ctx.fillRect(1160, 900, 420, 80);
+    ctx.fillStyle = '#fff'; ctx.font = '500 30px "JetBrains Mono",monospace';
+    ctx.fillText(`${String(total).padStart(4, '0')}/${all}  color ${col}/3`, 1180, 950);
+  }
+  if (c.cv === 'finish' && beat >= 2) {
+    ctx.setLineDash([18, 12]); ctx.strokeStyle = '#1d2b25'; ctx.lineWidth = 4;
+    const w = 531 * K + 40, h = 160 * K + 40; ctx.beginPath(); ctx.roundRect(CX - w, CY - h, w * 2, h * 2, 40); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#1d2b25'; ctx.font = '700 34px "Atkinson Hyperlegible",Verdana,sans-serif'; ctx.fillText('Trim the stabilizer about 1/4 inch out', CX - w, CY + h + 56);
+  }
+}
+
+function say(text) {
+  if (!voice || !('speechSynthesis' in window)) return;
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = Math.min(1.4, speed); speaking = true; u.onend = u.onerror = () => { speaking = false; }; speechSynthesis.speak(u); } catch (e) { speaking = false; }
+}
+
+function showBeat(announce = true) {
+  const c = CH[ch], b = c.beats[beat];
+  $('cap').textContent = b.c; $('capno').textContent = `STEP ${beat + 1} OF ${c.beats.length}`;
+  $('gate').hidden = !b.gate; if (b.gate) { $('gateBtn').textContent = b.gate; setPlaying(false); }
+  if (c.cv) drawCanvas(); else applyBeat();
+  if (announce) say(b.c);
+}
+
+function load(i, autoplay) {
+  ch = Math.max(0, Math.min(CH.length - 1, i)); beat = 0; t = 0; const c = CH[ch];
+  try { speechSynthesis.cancel(); } catch (e) {} speaking = false;
+  svg.toggleAttribute('hidden', !!c.cv); cv.hidden = !c.cv;
+  if (!c.cv) { svg.innerHTML = SCENES[c.s](); beat = -1; applyBeat(); beat = 0; svg.getBoundingClientRect(); }
+  $('chip').textContent = `${ch + 1}/${CH.length}  ${c.t}`;
+  $('sideno').textContent = `Chapter ${ch + 1} of ${CH.length}`; $('sidetitle').textContent = c.t; $('check').innerHTML = '<strong>Check:</strong> ';
+  $('check').append(c.check); $('turn').hidden = true;
+  $('todo').innerHTML = '';
+  c.todo.forEach((txt, j) => {
+    const id = `c${ch}-${j}`, li = document.createElement('li'), lab = document.createElement('label'), inp = document.createElement('input'), sp = document.createElement('span');
+    inp.type = 'checkbox'; inp.id = id; inp.checked = !!ticks[id]; sp.textContent = txt;
+    inp.addEventListener('change', () => { ticks[id] = inp.checked; store.set('ticks', ticks); renderChapters(); });
+    lab.append(inp, sp); li.append(lab); $('todo').append(li);
+  });
+  store.set('ch', ch); renderChapters(); setPlaying(!!autoplay);
+  requestAnimationFrame(() => showBeat(!!autoplay));
+}
+
+function renderChapters() {
+  const ol = $('chapters'); ol.innerHTML = '';
+  CH.forEach((c, i) => {
+    const li = document.createElement('li'), b = document.createElement('button');
+    const done = c.todo.every((_, j) => ticks[`c${i}-${j}`]);
+    b.className = (i === ch ? 'cur ' : '') + (done ? 'done' : '');
+    b.innerHTML = `<span class="n">${String(i + 1).padStart(2, '0')}</span>`; b.append(c.t);
+    if (i === ch) b.setAttribute('aria-current', 'step');
+    b.addEventListener('click', () => load(i, false)); li.append(b); ol.append(li);
+  });
+}
+
+function setPlaying(p) {
+  playing = p; $('play').textContent = p ? '❚❚ Pause' : '▶ Play';
+  if (!p) { try { speechSynthesis.cancel(); } catch (e) {} speaking = false; }
+  if (!CH[ch].cv) applyBeat();
+}
+function endOfChapter() { setPlaying(false); $('turn').hidden = false; }
+function advance() {
+  const c = CH[ch];
+  if (beat < c.beats.length - 1) { beat++; t = 0; showBeat(); } else endOfChapter();
+}
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (playing) {
+    const c = CH[ch], b = c.beats[beat]; t += dt * speed;
+    $('prog').style.width = ((beat + Math.min(1, t / beatDur(b))) / c.beats.length * 100) + '%';
+    if (c.cv === 'stitch' && b.run !== undefined) drawCanvas();
+    if (t >= beatDur(b) && !speaking && !b.gate) advance();
+  }
+  requestAnimationFrame(frame);
+}
+
+$('play').addEventListener('click', () => {
+  const c = CH[ch];
+  if (!playing && beat === c.beats.length - 1 && t >= beatDur(c.beats[beat])) { load(ch, true); return; }
+  if (c.beats[beat].gate) return;
+  setPlaying(!playing); if (playing && t === 0) say(c.beats[beat].c);
+});
+$('replay').addEventListener('click', () => load(ch, true));
+$('prev').addEventListener('click', () => load(ch - 1, false));
+$('next').addEventListener('click', () => load(ch + 1, true));
+$('gateBtn').addEventListener('click', () => { $('gate').hidden = true; beat++; t = 0; setPlaying(true); showBeat(); });
+$('speed').addEventListener('click', () => { speed = speed === 1 ? 1.5 : speed === 1.5 ? 0.75 : 1; $('speed').textContent = `Speed ${speed}×`; });
+if ('speechSynthesis' in window) {
+  $('voice').hidden = false;
+  $('voice').addEventListener('click', () => { voice = !voice; $('voice').setAttribute('aria-pressed', voice); $('voice').textContent = `Read aloud: ${voice ? 'on' : 'off'}`; if (voice) say(CH[ch].beats[beat].c); else { try { speechSynthesis.cancel(); } catch (e) {} speaking = false; } });
+}
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest('input,button')) return;
+  if (e.key === ' ') { e.preventDefault(); $('play').click(); }
+  if (e.key === 'ArrowRight') $('next').click();
+  if (e.key === 'ArrowLeft') $('prev').click();
+});
+load(store.get('ch', 0), false);
+requestAnimationFrame((n) => { last = n; frame(n); });
+</script>
