@@ -20,7 +20,8 @@ Patterns and tools for our Poolin EOC07 and Brother SE2000 embroidery machines.
 | [`patterns/henderson-est-2007.dst`](patterns/henderson-est-2007.dst) | "Henderson" over "est. 2007", bold serif lettering | 106 x 29 mm (4.2" x 1.1") | 5.5" x 5.5" |
 | [`patterns/henderson-est-2007-clover.dst`](patterns/henderson-est-2007-clover.dst) | Same lettering with a small four-leaf clover on each side of "est. 2007" | 106 x 32 mm (4.2" x 1.3") | 5.5" x 5.5" |
 | [`patterns/henderson-est-2007-clover.pes`](patterns/henderson-est-2007-clover.pes) | Clover design for Brother machines (SE2000), with Brother thread colors: Emerald Green, Leaf Green, Brass | 106 x 32 mm (4.2" x 1.3") | 5" x 7" |
-| [`patterns/skull-flower-border.pes`](patterns/skull-flower-border.pes) | Skull, flower and vine border (Brother PES): green vines, pink and white flowers, black skulls | 186 x 130 mm (7.3" x 5.1") | 8.5" x 6.25", 0.5" margin |
+| [`patterns/skull-flower-border-5x7.pes`](patterns/skull-flower-border-5x7.pes) | Tall skull, flower and vine frame for a 5" x 7" stitch field (Brother SE2000); sides stay within 0.5" of the edge | 127 x 177 mm (5.0" x 7.0") | 5" x 7" |
+| [`patterns/skull-flower-border-6.25x8.5.pes`](patterns/skull-flower-border-6.25x8.5.pes) | The same frame for a 6.25" x 8.5" stitch field | 156 x 213 mm (6.1" x 8.4") | 6.25" x 8.5" |
 
 ![Preview](patterns/henderson-est-2007.png)
 
