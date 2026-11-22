@@ -2,9 +2,8 @@
 
 The clovers sit on the second line, one on each side of "est. 2007", and the
 line is centred under "Henderson". Each clover is four heart-shaped leaves around a small
-centre gap plus a short curved stem that starts where the leaves end. Each
-leaf is filled along its own axis so the four leaves read separately in
-thread. Stitch order: "Henderson", right clover, left clover, "est. 2007" -- three colors, so the
+centre gap plus a short tapering stem that starts where the leaves end. The
+stitch rows run the length of each leaf, so the four leaves read separately. Stitch order: "Henderson", right clover, left clover, "est. 2007" -- three colors, so the
 machine stops twice for thread changes.
 
 Writes a DST (Poolin) and a PES with Brother thread colors (Brother SE2000).
@@ -13,11 +12,12 @@ Usage:
     python3 tools/make_clover_pattern.py
 """
 
+import math
 import os
 
 import pyembroidery
 from shapely.affinity import rotate, scale, translate
-from shapely.geometry import LineString, Point
+from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 from make_text_pattern import OUT_DIR, layout_lines, stitch, write_dst, write_pes
@@ -29,38 +29,43 @@ BROTHER_COLORS = [(0x00673E, "Emerald Green"), (0x66BA49, "Leaf Green"), (0xBA98
 
 # All sizes in millimetres.
 LEAF_LENGTH = 5.0       # centre to the top of a leaf's lobes
-LEAF_LOBE = 1.6         # radius of each of the two lobes of a heart leaf
-CENTER_GAP = 0.5        # leaves start this far out from the centre
-STEM_WIDTH = 1.0
-CLOVER_SPACE = 2.5      # space between each clover and "est. 2007"
+LEAF_WIDTH = 1.0        # leaf width as a share of its length
+CENTER_GAP = 0.3        # leaves start this far out from the centre
+STEM_WIDTH = 1.2
+CLOVER_SPACE = 3.2      # space between each clover and "est. 2007"
 
 
 def heart_leaf():
-    """A heart pointing down: tip at (0, CENTER_GAP), lobes toward +y."""
-    cy = LEAF_LENGTH - LEAF_LOBE
-    off = LEAF_LOBE * 0.72
-    tip = Point(0, CENTER_GAP)
-    left = Point(-off, cy).buffer(LEAF_LOBE, 32)
-    right = Point(off, cy).buffer(LEAF_LOBE, 32)
-    # Each half is the hull of one lobe and the tip, so the notch between the
-    # lobes stays open.
-    return unary_union([left.union(tip).convex_hull, right.union(tip).convex_hull])
+    """A heart pointing down: tip at (0, CENTER_GAP), two rounded lobes with a notch between them at the top."""
+    pts = []
+    for k in range(96):
+        t = 2 * math.pi * k / 96
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        pts.append((x / 29 * LEAF_LENGTH * LEAF_WIDTH, CENTER_GAP + (y + 17) / 29 * LEAF_LENGTH))
+    return Polygon(pts).buffer(0)
 
 
 def stem():
-    """A gently curved stem from the centre down and to the right."""
-    pts = []
+    """A stem that tapers as it curves down and to the right from the centre."""
+    left, right = [], []
     for i in range(21):
         t = i / 20
-        pts.append((2.4 * t ** 1.8, -6.5 * t))
-    return LineString(pts).buffer(STEM_WIDTH / 2, cap_style=1)
+        x, y = 2.6 * t ** 1.8, -7.0 * t
+        dx, dy = 2.6 * 1.8 * t ** 0.8, -7.0
+        d = math.hypot(dx, dy)
+        h = (STEM_WIDTH - 0.5 * t) / 2
+        left.append((x - dy / d * h, y + dx / d * h))
+        right.append((x + dy / d * h, y - dx / d * h))
+    return Polygon(left + right[::-1]).buffer(0)
 
 
 def clover():
     """Return [(shape, fill_angle), ...]: the four leaves, then the stem."""
     leaf = heart_leaf()
-    # Leaves on the diagonals, like the classic St. Patrick's Day clover.
-    # Fill rows run across each leaf, perpendicular to its axis.
+    # Leaves on the diagonals, like the classic St. Patrick's Day clover. The
+    # stitch rows run the length of each leaf, out from the centre, so the four
+    # leaves catch the light differently and read as separate.
     leaves = [(rotate(leaf, a - 90, origin=(0, 0)), a) for a in (45, 135, 225, 315)]
     # Only stitch the stem where it shows, so no area gets two layers of thread.
     covered = unary_union([s for s, _ in leaves]).buffer(0.3)
@@ -75,7 +80,7 @@ def build(colors=POOLIN_COLORS):
     # one to the left, and a mirror image (stem curving the other way) to the
     # right.
     items = clover()
-    leaves = unary_union([sh for sh, _ in items[:4]]).bounds
+    leaves = unary_union([sh for sh, _ in items[:-1]]).bounds
     ex0, ey0, ex1, ey1 = unary_union(est).bounds
     dy = (ey0 + ey1) / 2
     left = [(translate(sh, ex0 - CLOVER_SPACE - leaves[2], dy), a) for sh, a in items]
