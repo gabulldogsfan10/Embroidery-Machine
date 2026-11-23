@@ -92,30 +92,57 @@ def _build(lines):
     return stitch(layers)
 
 
+# A tiny single-line alphabet for the size labels: strokes in a box 1 unit tall.
+STICK = {
+    "1": (0.45, [[(0.05, 0.75), (0.3, 1), (0.3, 0)]]),
+    "2": (0.6, [[(0, 0.8), (0.15, 1), (0.45, 1), (0.6, 0.8), (0.6, 0.6), (0, 0), (0.6, 0)]]),
+    "3": (0.6, [[(0, 1), (0.6, 1), (0.25, 0.58), (0.5, 0.55), (0.6, 0.35), (0.6, 0.15), (0.45, 0), (0.15, 0), (0, 0.15)]]),
+    "4": (0.6, [[(0.45, 0), (0.45, 1), (0, 0.3), (0.6, 0.3)]]),
+    "/": (0.5, [[(0, 0), (0.5, 1)]]),
+    "M": (0.7, [[(0, 0), (0, 1), (0.35, 0.4), (0.7, 1), (0.7, 0)]]),
+    "D": (0.6, [[(0, 0), (0, 1), (0.35, 1), (0.6, 0.75), (0.6, 0.25), (0.35, 0), (0, 0)]]),
+    " ": (0.45, []),
+}
+LABEL_H = 4.5           # label letter height, mm
+LABEL_X = -62.0         # labels start here, at the left of the hoop
+
+
+def label(text, x, y):
+    """Stroke paths for a label whose baseline starts at (x, y), each stitched three times over."""
+    paths = []
+    for ch in text:
+        width, strokes = STICK[ch]
+        for stroke in strokes:
+            pts = make_text_pattern.run_along([(x + px * LABEL_H, y + py * LABEL_H) for px, py in stroke], 2.0)
+            paths.append(pts + pts[-2::-1] + pts[1:])
+        x += (width + 0.3) * LABEL_H
+    return paths
+
+
 def build_full():
-    """Everything that fits a 5x7 hoop: the five sampler lines plus the 1-inch Rye at two higher
-    densities. The two smallest lines share the top row, and the gaps shrink to fit the height."""
+    """Reference sampler for a 5x7 hoop, one size per row with its letter height stitched beside it:
+    Rye at 1/4, 1/2 and 3/4 inch, the 3/4 inch again at medium (M) and dense (D) fill, Rye at 1 inch,
+    and Nosifer at 1 inch with red drips."""
     rye = lambda inches: line("rye.ttf", inches, False)[0]
-    small, half = rye(0.25), rye(0.5)
-    w_small = unary_union(small).bounds[2] * 2
-    w_half = unary_union(half).bounds[2] * 2
-    drop = unary_union(small).bounds[1] - unary_union(half).bounds[1]      # line the two up on their baselines
-    span = w_small + 10 + w_half
-    top_row = [translate(g, -span / 2 + w_small / 2, -drop) for g in small] + \
-              [translate(g, span / 2 - w_half / 2, 0) for g in half]
     nos_black, nos_red = line("nosifer.ttf", 1.0, True)
-    rows = [(top_row, None), (rye(0.75), None), (rye(1.0), None), (rye(1.0), 0.30), (rye(1.0), 0.25), (nos_black + nos_red, None)]
-    heights = [unary_union(r).bounds[3] - unary_union(r).bounds[1] for r, _ in rows]
+    rows = [(rye(0.25), None, "1/4"), (rye(0.5), None, "1/2"), (rye(0.75), None, "3/4"), (rye(0.75), 0.30, "3/4 M"),
+            (rye(0.75), 0.25, "3/4 D"), (rye(1.0), None, "1"), (nos_black + nos_red, None, "1")]
+    heights = [unary_union(r).bounds[3] - unary_union(r).bounds[1] for r, _, _ in rows]
     gap = min(LINE_GAP, (176.0 - sum(heights)) / (len(rows) - 1))
-    black, red, top = [], [], 0.0
-    for (shapes, spacing), h in zip(rows, heights):
+    black, red, labels, top = [], [], [], 0.0
+    for (shapes, spacing, text), h in zip(rows, heights):
         y1 = unary_union(shapes).bounds[3]
+        # The letters' own height, drips aside, sets where the label sits.
+        foot = min(g.bounds[1] for g in shapes if not any(g.equals(r) for r in nos_red))
         for g in shapes:
             (red if any(g.equals(r) for r in nos_red) else black).append((translate(g, 0, top - y1), spacing))
+        labels += label(text, LABEL_X, top - y1 + (foot + y1 - LABEL_H) / 2)      # centred on the letters' height
         top -= h + gap
 
     st = make_text_pattern.Stitcher()
+    pts = [q for path in labels for q in path]
     everything = unary_union([g for g, _ in black + red]).bounds
+    everything = (min(everything[0], min(x for x, _ in pts)), everything[1], everything[2], everything[3])
     ox, oy = -(everything[0] + everything[2]) / 2, -(everything[1] + everything[3]) / 2
     normal = make_text_pattern.FILL_SPACING
     for i, (color, items, angle) in enumerate(((BLACK, black, 45), (RED, red, 0))):
@@ -132,6 +159,11 @@ def build_full():
                     st.path(path, tie_in=first)
                     first = False
             st.end_block()
+        if i == 0:
+            for path in labels:
+                st.pos = None
+                st.path([(x + ox, y + oy) for x, y in path], tie_in=True)
+                st.end_block()
     make_text_pattern.FILL_SPACING = normal
     st.p.add_command(pyembroidery.END)
     return st.p, (everything[2] - everything[0], everything[3] - everything[1]), gap
