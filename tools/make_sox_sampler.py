@@ -16,7 +16,7 @@ import os
 import pyembroidery
 from fontTools.ttLib import TTFont
 from shapely.affinity import translate
-from shapely.geometry import box
+from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
 
 from make_skull_border import preview
@@ -169,7 +169,27 @@ def build_full():
     return st.p, (everything[2] - everything[0], everything[3] - everything[1]), gap
 
 
+def build_solid(font_file, inches, close=0.55):
+    """One line with its letters filled in solid, like Nosifer's: the thin decorative line inside
+    each Rye letter is closed up, while the real openings (the middle of the O) stay open."""
+    shapes, _ = line(font_file, inches, False)
+    solid = []
+    for g in shapes:
+        g = g.buffer(close).buffer(-close)
+        for part in getattr(g, "geoms", [g]):
+            # Drop any small leftover openings; keep real ones such as the middle of the O.
+            solid.append(Polygon(part.exterior, [h for h in part.interiors if Polygon(h).area > 6.0]))
+    return stitch([(*BLACK, [(g, 45) for g in solid])])
+
+
 if __name__ == "__main__":
+    pattern, (w, h) = build_solid("rye.ttf", 0.75)
+    base = os.path.join(OUT_DIR, "sox-rye-0_75in-solid")
+    write_pes(pattern, base + ".pes", "SOX solid")
+    pattern = pyembroidery.read(base + ".pes")
+    print(f"sox-rye-0_75in-solid: {w:.1f} x {h:.1f} mm ({w / IN:.2f} x {h / IN:.2f} in), "
+          f"{pattern.count_stitches()} stitches, {len(pattern.threadlist)} color(s)")
+
     pattern, (w, h), gap = build_full()
     base = os.path.join(OUT_DIR, "sox-sampler-full-5x7")
     write_pes(pattern, base + ".pes", "SOX full")
