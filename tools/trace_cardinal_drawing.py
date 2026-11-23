@@ -6,7 +6,7 @@ lines and stitched as a doubled running stitch. The white window frame is left
 as bare fabric. The design is scaled so its outer ring is 4.5 inches across,
 for stitching in a 5x7 hoop and displaying in a round one.
 
-Stitch order: cream, gray, orange, red, maroon, black -- five thread changes.
+Stitch order: cream, gray, red, orange, black, dark red -- five thread changes.
 
 Usage:
     python3 tools/trace_cardinal_drawing.py
@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 import pyembroidery
 from shapely.geometry import Point, Polygon
+from shapely.ops import unary_union
 from skimage.morphology import skeletonize
 
 import make_text_pattern
@@ -31,11 +32,12 @@ CX, CY, RING_PX = 511.5 * UP, 513.0 * UP, 456.5 * UP      # centre and radius of
 MM = 57.0 / RING_PX                          # millimetres per pixel: the ring becomes 114 mm (4.5 in) across
 STEP = 1.7                                   # outline stitch length, mm
 
+# Thread colors chosen for a real cardinal rather than the drawing's orange one.
 CREAM = (0xF0E4BE, "Cream")
-GRAY = (0xB5B5AE, "Gray")
-ORANGE = (0xE9662B, "Orange")
-RED = (0xBC3529, "Red")
-MAROON = (0x721B12, "Maroon")
+GRAY = (0x8E9196, "Gray")
+RED = (0xD3222A, "Red")
+DARK_RED = (0x8E1B22, "Dark Red")
+ORANGE = (0xF28C28, "Orange")
 BLACK = (0x000000, "Black")
 EYES = [(403 * UP, 444 * UP), (578 * UP, 446 * UP)]      # pixel positions of the two eyes
 
@@ -45,7 +47,7 @@ def to_mm(x, y):
 
 
 def classify():
-    """Label every pixel: 0 bare, 1 cream, 2 gray, 3 outline, 4 maroon, 5 red, 6 orange."""
+    """Label every pixel: 0 bare, 1 cream, 2 gray, 3 outline, 4 face mask, 5 shading, 6 body, 7 beak."""
     im = cv2.imread(ART)
     im = cv2.resize(im, None, fx=UP, fy=UP, interpolation=cv2.INTER_CUBIC)
     im = cv2.bilateralFilter(im, 9, 40, 9)
@@ -70,7 +72,12 @@ def classify():
     # Bird colors, matched to the nearest of the drawing's own: maroon, red, and two oranges.
     refs = np.array([[114, 27, 18], [188, 53, 41], [233, 102, 43], [213, 107, 63]], np.float32)
     nearest = np.argmin(((rgb[vivid][:, None, :] - refs[None]) ** 2).sum(2), axis=1)
-    cls[vivid] = np.array([4, 5, 6, 6], np.uint8)[nearest]
+    cls[vivid] = np.array([4, 5, 6, 7], np.uint8)[nearest]
+    # The lighter orange is the beak only where it sits beside an eye; elsewhere it is body.
+    n, labels, _, centres = cv2.connectedComponentsWithStats((cls == 7).astype(np.uint8), connectivity=8)
+    for k in range(1, n):
+        if min(math.dist(centres[k], e) for e in EYES) > 62 * UP:
+            cls[labels == k] = 6
     # The birds are outlined in maroon, not black. Broad maroon areas (the face masks) stay as
     # fills; anything thin is an outline or a feather line and joins the outlines.
     maroon = (cls == 4).astype(np.uint8)
@@ -161,12 +168,31 @@ def outlines(mask, min_len=3.0):
 
 def design():
     cls = classify()
-    layers = [(CREAM, shapes(cls == 1), 75, 0.5), (GRAY, shapes(cls == 2, min_area=5.0), 90, 0.5), (ORANGE, shapes(cls == 6), 35, 0.4),
-              (RED, shapes(cls == 5), 60, 0.4), (MAROON, shapes(cls == 4), 100, 0.4)]
-    return layers, outlines(cls == 3)
+    # Stitches on the birds run from head toward tail, the way the feathers lie.
+    layers = [(CREAM, shapes(cls == 1), 75, 0.5), (GRAY, shapes(cls == 2, min_area=5.0), 90, 0.5), (RED, shapes(cls == 6), -42, 0.4),
+              (ORANGE, shapes(cls == 7), 10, 0.4), (BLACK, shapes(cls == 4), 80, 0.4), (DARK_RED, shapes(cls == 5), -30, 0.4)]
+    # Outlines on a bird are stitched in dark red, so they read as shading and feather edges;
+    # the window's outlines, the ring and the legs are gray.
+    birds = unary_union([g for layer in layers[2:] for g in layer[1]]).buffer(0.7)
+    on_bird, off_bird = [], []
+    for route in outlines(cls == 3):
+        run, flag = [], None
+        for q in route + [None]:
+            inside = birds.contains(Point(q)) if q is not None else None
+            if inside != flag and run:
+                if len(run) >= 2:
+                    (on_bird if flag else off_bird).append(run)
+                run = run[-1:] if q is not None else []
+            if q is not None:
+                run.append(q); flag = inside
+    # Scraps shorter than 3 mm only add a trim and a thread tail, so leave them out.
+    length = lambda r: sum(math.dist(p, q) for p, q in zip(r, r[1:]))
+    return layers, ([r for r in off_bird if length(r) >= 3.0], [r for r in on_bird if length(r) >= 3.0])
 
 
 def digitize(layers, lines):
+    off_bird, on_bird = lines
+    extra = {GRAY[1]: off_bird, DARK_RED[1]: on_bird}
     st = Stitcher()
     normal = make_text_pattern.FILL_SPACING
     for i, ((rgb, name), polys, angle, spacing) in enumerate(layers):
@@ -184,19 +210,17 @@ def digitize(layers, lines):
                     first = False
             if not first:
                 st.end_block()
+        for pts in extra.get(name, []):
+            st.pos, st.shape = None, None
+            st.path(pts, tie_in=True)
+            st.end_block()
+        if name == BLACK[1]:
+            for ex, ey in EYES:                       # each eye is a small solid dot
+                dot = Point(to_mm(ex, ey)).buffer(0.75, 8)
+                st.pos, st.shape = None, dot
+                st.path([q for row in fill_rows(dot, 0) for q in row], tie_in=True)
+                st.end_block()
     make_text_pattern.FILL_SPACING = normal
-    st.p.add_thread({"color": BLACK[0], "description": BLACK[1]})
-    st.p.threadlist[-1].catalog_number = ""
-    st.p.add_command(pyembroidery.COLOR_BREAK)
-    for pts in lines:
-        st.pos, st.shape = None, None
-        st.path(pts, tie_in=True)
-        st.end_block()
-    for ex, ey in EYES:                       # each eye is a small solid dot
-        dot = Point(to_mm(ex, ey)).buffer(0.75, 8)
-        st.pos, st.shape = None, dot
-        st.path([q for row in fill_rows(dot, 0) for q in row], tie_in=True)
-        st.end_block()
     st.p.add_command(pyembroidery.END)
     return st.p
 
@@ -207,8 +231,9 @@ def write_svg(layers, lines, path):
         for g in polys:
             d = " ".join("M" + " L".join(f"{x:.2f},{-y:.2f}" for x, y in r.coords) + " Z" for r in [g.exterior] + list(g.interiors))
             out.append(f'  <path d="{d}" fill="#{rgb:06x}" fill-rule="evenodd"/>')
-    for pts in lines:
-        out.append('  <polyline points="' + " ".join(f"{x:.2f},{-y:.2f}" for x, y in pts) + '" fill="none" stroke="#000" stroke-width="0.35"/>')
+    for group, (rgb, _) in zip(lines, (GRAY, DARK_RED)):
+        for pts in group:
+            out.append('  <polyline points="' + " ".join(f"{x:.2f},{-y:.2f}" for x, y in pts) + f'" fill="none" stroke="#{rgb:06x}" stroke-width="0.35"/>')
     for ex, ey in EYES:
         x, y = to_mm(ex, ey)
         out.append(f'  <circle cx="{x:.2f}" cy="{-y:.2f}" r="0.75" fill="#000"/>')
@@ -228,8 +253,9 @@ def compare(layers, lines, path):
             d.polygon([px(q) for q in g.exterior.coords], fill="#%06x" % rgb)
             for h in g.interiors:
                 d.polygon([px(q) for q in h.coords], fill=(252, 251, 247))
-    for pts in lines:
-        d.line([px(q) for q in pts], fill=(25, 20, 18), width=3)
+    for group, (rgb, _) in zip(lines, (GRAY, DARK_RED)):
+        for pts in group:
+            d.line([px(q) for q in pts], fill="#%06x" % rgb, width=3)
     for ex, ey in EYES:
         x, y = px(to_mm(ex, ey))
         d.ellipse([x - 7, y - 7, x + 7, y + 7], fill=(0, 0, 0))
@@ -257,4 +283,4 @@ if __name__ == "__main__":
             counts[-1] += 1
     trims = sum(1 for s in pattern.stitches if s[2] & 0xFF == pyembroidery.TRIM)
     print(f"cardinal-reflection: {(x1 - x0) / 10:.1f} x {(y1 - y0) / 10:.1f} mm, {pattern.count_stitches()} stitches, {trims} trims")
-    print(list(zip([t.description for t in pattern.threadlist], counts)), "outline routes:", len(lines))
+    print(list(zip([t.description for t in pattern.threadlist], counts)), "outline runs:", len(lines[0]) + len(lines[1]))
