@@ -1,0 +1,212 @@
+"""Trace the cardinal-and-reflection line drawing into a vector (SVG) and a Brother PES.
+
+The drawing (art/cardinal-reflection-drawing.jpg) is split into its flat colors.
+Each color becomes filled shapes; the dark outlines are thinned to their centre
+lines and stitched as a doubled running stitch. The white window frame is left
+as bare fabric. The design is scaled so its outer ring is 4.5 inches across,
+for stitching in a 5x7 hoop and displaying in a round one.
+
+Stitch order: cream, gray, orange, red, maroon, black -- five thread changes.
+
+Usage:
+    python3 tools/trace_cardinal_drawing.py
+"""
+
+import math
+import os
+
+import cv2
+import numpy as np
+import pyembroidery
+from shapely.geometry import Point, Polygon
+from skimage.morphology import skeletonize
+
+import make_text_pattern
+from make_cardinal_designs import preview
+from make_text_pattern import HERE, OUT_DIR, Stitcher, fill_rows, underlay, write_pes
+
+ART = os.path.join(HERE, "..", "art", "cardinal-reflection-drawing.jpg")
+CX, CY, RING_PX = 511.5, 513.0, 456.5      # centre and radius of the drawing's outer ring, in pixels
+MM = 57.0 / RING_PX                          # millimetres per pixel: the ring becomes 114 mm (4.5 in) across
+STEP = 1.7                                   # outline stitch length, mm
+
+CREAM = (0xF0E4BE, "Cream")
+GRAY = (0xB5B5AE, "Gray")
+ORANGE = (0xE9662B, "Orange")
+RED = (0xBC3529, "Red")
+MAROON = (0x721B12, "Maroon")
+BLACK = (0x000000, "Black")
+EYES = [(403, 444), (578, 446)]              # pixel positions of the two eyes
+
+
+def to_mm(x, y):
+    return ((x - CX) * MM, -(y - CY) * MM)
+
+
+def classify():
+    """Label every pixel: 0 bare, 1 cream, 2 gray, 3 outline, 4 maroon, 5 red, 6 orange."""
+    im = cv2.bilateralFilter(cv2.imread(ART), 7, 40, 7)
+    rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB).astype(np.float32)
+    hsv = cv2.cvtColor(im, cv2.COLOR_BGR2HSV).astype(int)
+    s, v = hsv[..., 1], hsv[..., 2]
+    yy, xx = np.mgrid[0:im.shape[0], 0:im.shape[1]]
+    inside = (xx - CX) ** 2 + (yy - CY) ** 2 < (RING_PX + 4) ** 2
+    cls = np.zeros(im.shape[:2], np.uint8)
+    dark = (v < 150) & (s < 110) & inside
+    # The soft edge of every outline reads as gray, so gray only counts away from the outlines.
+    near_dark = cv2.dilate(dark.astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+    gray = (v >= 165) & (v < 222) & (s < 40) & inside & ~near_dark
+    gray = cv2.morphologyEx(gray.astype(np.uint8), cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))) > 0
+    cls[(v > 225) & (rgb[..., 0] - rgb[..., 2] > 14) & (s < 60) & inside] = 1
+    cls[gray] = 2
+    cls[dark] = 3
+    vivid = (s > 110) & (v > 90) & inside
+    # Bird colors, matched to the nearest of the drawing's own: maroon, red, and two oranges.
+    refs = np.array([[114, 27, 18], [188, 53, 41], [233, 102, 43], [213, 107, 63]], np.float32)
+    nearest = np.argmin(((rgb[vivid][:, None, :] - refs[None]) ** 2).sum(2), axis=1)
+    cls[vivid] = np.array([4, 5, 6, 6], np.uint8)[nearest]
+    # The birds are outlined in maroon, not black. Broad maroon areas (the face masks) stay as
+    # fills; anything thin is an outline or a feather line and joins the outlines.
+    maroon = (cls == 4).astype(np.uint8)
+    broad = cv2.dilate(cv2.erode(maroon, np.ones((7, 7), np.uint8)), np.ones((9, 9), np.uint8)) & maroon
+    cls[(maroon > 0) & (broad == 0)] = 3
+    return cls
+
+
+def shapes(mask, grow=3, min_area=1.5):
+    """Filled regions of a pixel mask as polygons in mm, grown slightly to tuck under the outlines."""
+    mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))     # drop specks
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))                     # heal pinholes
+    mask = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * grow + 1, 2 * grow + 1)))
+    contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+    out = []
+    for i, c in enumerate(contours):
+        if hierarchy[0][i][3] != -1 or len(c) < 4:
+            continue
+        holes, j = [], hierarchy[0][i][2]
+        while j != -1:
+            if len(contours[j]) >= 4:
+                holes.append([to_mm(*p[0]) for p in contours[j]])
+            j = hierarchy[0][j][0]
+        poly = Polygon([to_mm(*p[0]) for p in c], holes).buffer(0).simplify(0.12)
+        for g in getattr(poly, "geoms", [poly]):
+            g = Polygon(g.exterior, [h for h in g.interiors if Polygon(h).area > 0.8])
+            if g.area >= min_area:
+                out.append(g)
+    return out
+
+
+def outlines(mask, min_len=3.0):
+    """Centre lines of the dark outlines. Each connected set of lines becomes one continuous
+    route that goes out along every branch and back, so it is stitched twice with no trims."""
+    mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))    # join hairline breaks
+    skel = skeletonize(mask > 0)
+    n, labels = cv2.connectedComponents(skel.astype(np.uint8), connectivity=8)
+    routes = []
+    for k in range(1, n):
+        pix = set(zip(*np.where(labels == k)))
+        if len(pix) * MM < min_len:
+            continue
+        nbrs = lambda p: [(p[0] + dy, p[1] + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if (dy or dx) and (p[0] + dy, p[1] + dx) in pix]
+        start = next((p for p in pix if len(nbrs(p)) == 1), next(iter(pix)))
+        stack, seen, walk = [start], {start}, [start]
+        while stack:
+            nxt = next((q for q in nbrs(stack[-1]) if q not in seen), None)
+            if nxt is None:
+                stack.pop()
+                if stack:
+                    walk.append(stack[-1])
+            else:
+                seen.add(nxt); stack.append(nxt); walk.append(nxt)
+        # Thin the pixel-by-pixel walk to stitch-length steps, keeping every turning-back point.
+        pts, last = [to_mm(walk[0][1], walk[0][0])], 0
+        for i in range(1, len(walk) - 1):
+            p = to_mm(walk[i][1], walk[i][0])
+            if walk[i - 1] == walk[i + 1] or math.dist(p, pts[-1]) >= STEP:
+                if math.dist(p, pts[-1]) > 0.25:
+                    pts.append(p)
+        pts.append(to_mm(walk[-1][1], walk[-1][0]))
+        routes.append(pts)
+    # Stitch neighbouring routes one after another.
+    ordered, pos = [], (0.0, 60.0)
+    while routes:
+        i = min(range(len(routes)), key=lambda j: math.dist(pos, routes[j][0]))
+        ordered.append(routes.pop(i)); pos = ordered[-1][-1]
+    return ordered
+
+
+def design():
+    cls = classify()
+    layers = [(CREAM, shapes(cls == 1), 75, 0.5), (GRAY, shapes(cls == 2, min_area=15.0), 90, 0.5), (ORANGE, shapes(cls == 6), 35, 0.4),
+              (RED, shapes(cls == 5), 60, 0.4), (MAROON, shapes(cls == 4), 100, 0.4)]
+    return layers, outlines(cls == 3)
+
+
+def digitize(layers, lines):
+    st = Stitcher()
+    normal = make_text_pattern.FILL_SPACING
+    for i, ((rgb, name), polys, angle, spacing) in enumerate(layers):
+        st.p.add_thread({"color": rgb, "description": name})
+        st.p.threadlist[-1].catalog_number = ""
+        if i:
+            st.p.add_command(pyembroidery.COLOR_BREAK)
+        make_text_pattern.FILL_SPACING = spacing
+        polys = sorted(polys, key=lambda g: (round(g.centroid.x / 25), g.centroid.y))
+        for g in polys:
+            st.pos, first, st.shape = None, True, g
+            for path in underlay(g) + fill_rows(g, angle):
+                if len(path) >= 2:
+                    st.path(path, tie_in=first)
+                    first = False
+            if not first:
+                st.end_block()
+    make_text_pattern.FILL_SPACING = normal
+    st.p.add_thread({"color": BLACK[0], "description": BLACK[1]})
+    st.p.threadlist[-1].catalog_number = ""
+    st.p.add_command(pyembroidery.COLOR_BREAK)
+    for pts in lines:
+        st.pos, st.shape = None, None
+        st.path(pts, tie_in=True)
+        st.end_block()
+    for ex, ey in EYES:                       # each eye is a small solid dot
+        dot = Point(to_mm(ex, ey)).buffer(0.75, 8)
+        st.pos, st.shape = None, dot
+        st.path([q for row in fill_rows(dot, 0) for q in row], tie_in=True)
+        st.end_block()
+    st.p.add_command(pyembroidery.END)
+    return st.p
+
+
+def write_svg(layers, lines, path):
+    out = ['<svg xmlns="http://www.w3.org/2000/svg" width="120mm" height="120mm" viewBox="-60 -60 120 120">']
+    for (rgb, _), polys, _, _ in layers:
+        for g in polys:
+            d = " ".join("M" + " L".join(f"{x:.2f},{-y:.2f}" for x, y in r.coords) + " Z" for r in [g.exterior] + list(g.interiors))
+            out.append(f'  <path d="{d}" fill="#{rgb:06x}" fill-rule="evenodd"/>')
+    for pts in lines:
+        out.append('  <polyline points="' + " ".join(f"{x:.2f},{-y:.2f}" for x, y in pts) + '" fill="none" stroke="#000" stroke-width="0.35"/>')
+    for ex, ey in EYES:
+        x, y = to_mm(ex, ey)
+        out.append(f'  <circle cx="{x:.2f}" cy="{-y:.2f}" r="0.75" fill="#000"/>')
+    with open(path, "w") as f:
+        f.write("\n".join(out + ["</svg>", ""]))
+
+
+if __name__ == "__main__":
+    os.makedirs(OUT_DIR, exist_ok=True)
+    layers, lines = design()
+    base = os.path.join(OUT_DIR, "cardinal-reflection")
+    write_svg(layers, lines, base + ".svg")
+    write_pes(digitize(layers, lines), base + ".pes", "Cardinal mirror")
+    pattern = pyembroidery.read(base + ".pes")
+    preview(pattern, base + ".png")
+    x0, y0, x1, y1 = pattern.bounds()
+    counts = [0]
+    for s in pattern.stitches:
+        if s[2] & 0xFF == pyembroidery.COLOR_CHANGE:
+            counts.append(0)
+        elif s[2] & 0xFF == pyembroidery.STITCH:
+            counts[-1] += 1
+    trims = sum(1 for s in pattern.stitches if s[2] & 0xFF == pyembroidery.TRIM)
+    print(f"cardinal-reflection: {(x1 - x0) / 10:.1f} x {(y1 - y0) / 10:.1f} mm, {pattern.count_stitches()} stitches, {trims} trims")
+    print(list(zip([t.description for t in pattern.threadlist], counts)), "outline routes:", len(lines))

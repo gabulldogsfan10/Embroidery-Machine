@@ -33,6 +33,8 @@ Patterns and tools for our Poolin EOC07 and Brother SE2000 embroidery machines.
 | [`patterns/cardinal-at-window.pes`](patterns/cardinal-at-window.pes) | A cardinal on a window sill looking at its reflection; composed in a 4.5" circle for a round display hoop. Vector: [`cardinal-at-window.svg`](patterns/cardinal-at-window.svg) | 114 x 109 mm (4.5" x 4.3") | 5" x 7" |
 | [`patterns/cardinal-flying.pes`](patterns/cardinal-flying.pes) | A cardinal flying at the window, seen from indoors; composed in a 4.5" circle. Vector: [`cardinal-flying.svg`](patterns/cardinal-flying.svg) | 94 x 103 mm (3.7" x 4.1") | 5" x 7" |
 
+| [`patterns/cardinal-reflection.pes`](patterns/cardinal-reflection.pes) | A cardinal on a sill facing its reflection, traced from `art/cardinal-reflection-drawing.jpg`; outer ring 4.5" across. Vector: [`cardinal-reflection.svg`](patterns/cardinal-reflection.svg) | 114 x 114 mm (4.5" x 4.5") | 5" x 7" |
+
 ![Preview](patterns/henderson-est-2007.png)
 
 ![Clover preview](patterns/henderson-est-2007-clover.png)
