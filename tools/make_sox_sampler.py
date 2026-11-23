@@ -20,6 +20,7 @@ from shapely.geometry import box
 from shapely.ops import unary_union
 
 from make_skull_border import preview
+import make_text_pattern
 from make_text_pattern import HERE, OUT_DIR, PolyPen, glyph_shape, stitch, write_pes
 
 IN = 25.4
@@ -69,7 +70,18 @@ def line(font_file, inches, drips):
     return parts(black), parts(red)
 
 
-def build(lines):
+def build(lines, spacing=None):
+    """Stitch the lines stacked top to bottom. spacing overrides the gap between fill rows (mm);
+    a smaller gap means more rows, so more stitches and a more solid look."""
+    normal = make_text_pattern.FILL_SPACING
+    make_text_pattern.FILL_SPACING = spacing or normal
+    try:
+        return _build(lines)
+    finally:
+        make_text_pattern.FILL_SPACING = normal
+
+
+def _build(lines):
     black, red, top = [], [], 0.0
     for font_file, inches, drips in lines:
         b, r = line(font_file, inches, drips)
@@ -82,11 +94,13 @@ def build(lines):
 
 if __name__ == "__main__":
     os.makedirs(OUT_DIR, exist_ok=True)
-    jobs = [("sox-sampler-5x7", LINES)]
-    jobs += [(f"sox-{f.split('.')[0]}-{str(h).replace('.', '_')}in", [(f, h, d)]) for f, h, d in LINES]
-    for name, lines in jobs:
+    jobs = [("sox-sampler-5x7", LINES, None)]
+    jobs += [(f"sox-{f.split('.')[0]}-{str(h).replace('.', '_')}in", [(f, h, d)], None) for f, h, d in LINES]
+    # The 1-inch Rye again with the fill rows closer together (normal is 0.40 mm).
+    jobs += [("sox-rye-1_0in-dense", [LINES[3]], 0.30), ("sox-rye-1_0in-extra-dense", [LINES[3]], 0.25)]
+    for name, lines, spacing in jobs:
         base = os.path.join(OUT_DIR, name)
-        pattern, (w, h) = build(lines)
+        pattern, (w, h) = build(lines, spacing)
         write_pes(pattern, base + ".pes", "SOX")
         pattern = pyembroidery.read(base + ".pes")
         if name.startswith("sox-sampler"):
