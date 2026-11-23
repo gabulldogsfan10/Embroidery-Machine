@@ -92,7 +92,60 @@ def _build(lines):
     return stitch(layers)
 
 
+def build_full():
+    """Everything that fits a 5x7 hoop: the five sampler lines plus the 1-inch Rye at two higher
+    densities. The two smallest lines share the top row, and the gaps shrink to fit the height."""
+    rye = lambda inches: line("rye.ttf", inches, False)[0]
+    small, half = rye(0.25), rye(0.5)
+    w_small = unary_union(small).bounds[2] * 2
+    w_half = unary_union(half).bounds[2] * 2
+    drop = unary_union(small).bounds[1] - unary_union(half).bounds[1]      # line the two up on their baselines
+    span = w_small + 10 + w_half
+    top_row = [translate(g, -span / 2 + w_small / 2, -drop) for g in small] + \
+              [translate(g, span / 2 - w_half / 2, 0) for g in half]
+    nos_black, nos_red = line("nosifer.ttf", 1.0, True)
+    rows = [(top_row, None), (rye(0.75), None), (rye(1.0), None), (rye(1.0), 0.30), (rye(1.0), 0.25), (nos_black + nos_red, None)]
+    heights = [unary_union(r).bounds[3] - unary_union(r).bounds[1] for r, _ in rows]
+    gap = min(LINE_GAP, (176.0 - sum(heights)) / (len(rows) - 1))
+    black, red, top = [], [], 0.0
+    for (shapes, spacing), h in zip(rows, heights):
+        y1 = unary_union(shapes).bounds[3]
+        for g in shapes:
+            (red if any(g.equals(r) for r in nos_red) else black).append((translate(g, 0, top - y1), spacing))
+        top -= h + gap
+
+    st = make_text_pattern.Stitcher()
+    everything = unary_union([g for g, _ in black + red]).bounds
+    ox, oy = -(everything[0] + everything[2]) / 2, -(everything[1] + everything[3]) / 2
+    normal = make_text_pattern.FILL_SPACING
+    for i, (color, items, angle) in enumerate(((BLACK, black, 45), (RED, red, 0))):
+        st.p.add_thread({"color": color[0], "description": color[1]})
+        st.p.threadlist[-1].catalog_number = ""
+        if i:
+            st.p.add_command(pyembroidery.COLOR_BREAK)
+        for g, spacing in items:
+            g = translate(g, ox, oy)
+            make_text_pattern.FILL_SPACING = spacing or normal
+            st.pos, first = None, True
+            for path in make_text_pattern.underlay(g) + make_text_pattern.fill_rows(g, angle):
+                if len(path) >= 2:
+                    st.path(path, tie_in=first)
+                    first = False
+            st.end_block()
+    make_text_pattern.FILL_SPACING = normal
+    st.p.add_command(pyembroidery.END)
+    return st.p, (everything[2] - everything[0], everything[3] - everything[1]), gap
+
+
 if __name__ == "__main__":
+    pattern, (w, h), gap = build_full()
+    base = os.path.join(OUT_DIR, "sox-sampler-full-5x7")
+    write_pes(pattern, base + ".pes", "SOX full")
+    pattern = pyembroidery.read(base + ".pes")
+    preview(pattern, 130.0, 180.0, base + ".png")
+    print(f"sox-sampler-full-5x7: {w:.1f} x {h:.1f} mm ({w / IN:.2f} x {h / IN:.2f} in), gaps {gap:.1f} mm, "
+          f"{pattern.count_stitches()} stitches, {len(pattern.threadlist)} color(s)")
+
     os.makedirs(OUT_DIR, exist_ok=True)
     jobs = [("sox-sampler-5x7", LINES, None)]
     jobs += [(f"sox-{f.split('.')[0]}-{str(h).replace('.', '_')}in", [(f, h, d)], None) for f, h, d in LINES]
