@@ -30,6 +30,9 @@ Patterns and tools for our Poolin EOC07 and Brother SE2000 embroidery machines.
 
 | [`patterns/sox-sampler-5x7.pes`](patterns/sox-sampler-5x7.pes) | "SOX" sampler: Rye at 1/4", 1/2", 3/4" and 1" letter height, then Nosifer at 1" with red drips. Each line is also its own file (`sox-rye-*.pes`, `sox-nosifer-1_0in.pes`) | 103 x 134 mm (4.1" x 5.3") | 5" x 7" |
 
+| [`patterns/cardinal-at-window.pes`](patterns/cardinal-at-window.pes) | A cardinal on a window sill looking at its reflection; composed in a 4.5" circle for a round display hoop. Vector: [`cardinal-at-window.svg`](patterns/cardinal-at-window.svg) | 114 x 109 mm (4.5" x 4.3") | 5" x 7" |
+| [`patterns/cardinal-flying.pes`](patterns/cardinal-flying.pes) | A cardinal flying at the window, seen from indoors; composed in a 4.5" circle. Vector: [`cardinal-flying.svg`](patterns/cardinal-flying.svg) | 94 x 103 mm (3.7" x 4.1") | 5" x 7" |
+
 ![Preview](patterns/henderson-est-2007.png)
 
 ![Clover preview](patterns/henderson-est-2007-clover.png)
