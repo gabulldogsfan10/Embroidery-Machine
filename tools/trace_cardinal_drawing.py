@@ -26,7 +26,8 @@ from make_cardinal_designs import preview
 from make_text_pattern import HERE, OUT_DIR, Stitcher, fill_rows, underlay, write_pes
 
 ART = os.path.join(HERE, "..", "art", "cardinal-reflection-drawing.jpg")
-CX, CY, RING_PX = 511.5, 513.0, 456.5      # centre and radius of the drawing's outer ring, in pixels
+UP = 2                                       # the drawing is enlarged this much before tracing, for smoother curves
+CX, CY, RING_PX = 511.5 * UP, 513.0 * UP, 456.5 * UP      # centre and radius of the outer ring, in pixels
 MM = 57.0 / RING_PX                          # millimetres per pixel: the ring becomes 114 mm (4.5 in) across
 STEP = 1.7                                   # outline stitch length, mm
 
@@ -36,7 +37,7 @@ ORANGE = (0xE9662B, "Orange")
 RED = (0xBC3529, "Red")
 MAROON = (0x721B12, "Maroon")
 BLACK = (0x000000, "Black")
-EYES = [(403, 444), (578, 446)]              # pixel positions of the two eyes
+EYES = [(403 * UP, 444 * UP), (578 * UP, 446 * UP)]      # pixel positions of the two eyes
 
 
 def to_mm(x, y):
@@ -45,22 +46,27 @@ def to_mm(x, y):
 
 def classify():
     """Label every pixel: 0 bare, 1 cream, 2 gray, 3 outline, 4 maroon, 5 red, 6 orange."""
-    im = cv2.bilateralFilter(cv2.imread(ART), 7, 40, 7)
+    im = cv2.imread(ART)
+    im = cv2.resize(im, None, fx=UP, fy=UP, interpolation=cv2.INTER_CUBIC)
+    im = cv2.bilateralFilter(im, 9, 40, 9)
+    gray_im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
     rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB).astype(np.float32)
     hsv = cv2.cvtColor(im, cv2.COLOR_BGR2HSV).astype(int)
     s, v = hsv[..., 1], hsv[..., 2]
     yy, xx = np.mgrid[0:im.shape[0], 0:im.shape[1]]
     inside = (xx - CX) ** 2 + (yy - CY) ** 2 < (RING_PX + 4) ** 2
     cls = np.zeros(im.shape[:2], np.uint8)
-    dark = (v < 150) & (s < 110) & inside
+    # An outline is anything clearly darker than what surrounds it, so faint pencil-gray lines count too.
+    blackhat = cv2.morphologyEx(gray_im, cv2.MORPH_BLACKHAT, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (23, 23)))
+    dark = (((v < 150) & (s < 110)) | ((blackhat > 42) & (s < 110))) & inside
     # The soft edge of every outline reads as gray, so gray only counts away from the outlines.
-    near_dark = cv2.dilate(dark.astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+    near_dark = cv2.dilate(dark.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
     gray = (v >= 165) & (v < 222) & (s < 40) & inside & ~near_dark
-    gray = cv2.morphologyEx(gray.astype(np.uint8), cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))) > 0
+    gray = cv2.morphologyEx(gray.astype(np.uint8), cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))) > 0
     cls[(v > 225) & (rgb[..., 0] - rgb[..., 2] > 14) & (s < 60) & inside] = 1
     cls[gray] = 2
     cls[dark] = 3
-    vivid = (s > 110) & (v > 90) & inside
+    vivid = (s > 110) & inside
     # Bird colors, matched to the nearest of the drawing's own: maroon, red, and two oranges.
     refs = np.array([[114, 27, 18], [188, 53, 41], [233, 102, 43], [213, 107, 63]], np.float32)
     nearest = np.argmin(((rgb[vivid][:, None, :] - refs[None]) ** 2).sum(2), axis=1)
@@ -68,15 +74,24 @@ def classify():
     # The birds are outlined in maroon, not black. Broad maroon areas (the face masks) stay as
     # fills; anything thin is an outline or a feather line and joins the outlines.
     maroon = (cls == 4).astype(np.uint8)
-    broad = cv2.dilate(cv2.erode(maroon, np.ones((7, 7), np.uint8)), np.ones((9, 9), np.uint8)) & maroon
+    broad = cv2.dilate(cv2.erode(maroon, np.ones((13, 13), np.uint8)), np.ones((17, 17), np.uint8)) & maroon
     cls[(maroon > 0) & (broad == 0)] = 3
     return cls
 
 
-def shapes(mask, grow=3, min_area=1.5):
+def smooth(ring, rounds=2):
+    """Round off the pixel steps in an outline."""
+    pts = list(ring.coords)[:-1]
+    for _ in range(rounds):
+        pts = [q for a, b in zip(pts, pts[1:] + pts[:1])
+               for q in ((a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25), (a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75))]
+    return pts
+
+
+def shapes(mask, grow=7, min_area=1.0):
     """Filled regions of a pixel mask as polygons in mm, grown slightly to tuck under the outlines."""
     mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))     # drop specks
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))                     # heal pinholes
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))                     # heal pinholes
     mask = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * grow + 1, 2 * grow + 1)))
     contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
     out = []
@@ -88,9 +103,12 @@ def shapes(mask, grow=3, min_area=1.5):
             if len(contours[j]) >= 4:
                 holes.append([to_mm(*p[0]) for p in contours[j]])
             j = hierarchy[0][j][0]
-        poly = Polygon([to_mm(*p[0]) for p in c], holes).buffer(0).simplify(0.12)
+        poly = Polygon([to_mm(*p[0]) for p in c], holes).buffer(0).simplify(0.15)
         for g in getattr(poly, "geoms", [poly]):
-            g = Polygon(g.exterior, [h for h in g.interiors if Polygon(h).area > 0.8])
+            if g.area < min_area:
+                continue
+            g = Polygon(smooth(g.exterior), [smooth(h) for h in g.interiors if Polygon(h).area > 0.8]).buffer(0)
+            g = max(getattr(g, "geoms", [g]), key=lambda q: q.area)
             if g.area >= min_area:
                 out.append(g)
     return out
@@ -99,8 +117,14 @@ def shapes(mask, grow=3, min_area=1.5):
 def outlines(mask, min_len=3.0):
     """Centre lines of the dark outlines. Each connected set of lines becomes one continuous
     route that goes out along every branch and back, so it is stitched twice with no trims."""
-    mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))    # join hairline breaks
+    mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))    # join hairline breaks
     skel = skeletonize(mask > 0)
+    # Each centre-line pixel is nudged to the average of its neighbours on the line, which irons out pixel steps.
+    f = skel.astype(np.float32)
+    yy, xx = np.mgrid[0:f.shape[0], 0:f.shape[1]].astype(np.float32)
+    weight = cv2.blur(f, (9, 9)) + 1e-9
+    sx, sy = cv2.blur(f * xx, (9, 9)) / weight, cv2.blur(f * yy, (9, 9)) / weight
+    at = lambda p: to_mm(float(sx[p]), float(sy[p]))
     n, labels = cv2.connectedComponents(skel.astype(np.uint8), connectivity=8)
     routes = []
     for k in range(1, n):
@@ -119,13 +143,13 @@ def outlines(mask, min_len=3.0):
             else:
                 seen.add(nxt); stack.append(nxt); walk.append(nxt)
         # Thin the pixel-by-pixel walk to stitch-length steps, keeping every turning-back point.
-        pts, last = [to_mm(walk[0][1], walk[0][0])], 0
+        pts = [at(walk[0])]
         for i in range(1, len(walk) - 1):
-            p = to_mm(walk[i][1], walk[i][0])
+            p = at(walk[i])
             if walk[i - 1] == walk[i + 1] or math.dist(p, pts[-1]) >= STEP:
                 if math.dist(p, pts[-1]) > 0.25:
                     pts.append(p)
-        pts.append(to_mm(walk[-1][1], walk[-1][0]))
+        pts.append(at(walk[-1]))
         routes.append(pts)
     # Stitch neighbouring routes one after another.
     ordered, pos = [], (0.0, 60.0)
@@ -137,7 +161,7 @@ def outlines(mask, min_len=3.0):
 
 def design():
     cls = classify()
-    layers = [(CREAM, shapes(cls == 1), 75, 0.5), (GRAY, shapes(cls == 2, min_area=15.0), 90, 0.5), (ORANGE, shapes(cls == 6), 35, 0.4),
+    layers = [(CREAM, shapes(cls == 1), 75, 0.5), (GRAY, shapes(cls == 2, min_area=5.0), 90, 0.5), (ORANGE, shapes(cls == 6), 35, 0.4),
               (RED, shapes(cls == 5), 60, 0.4), (MAROON, shapes(cls == 4), 100, 0.4)]
     return layers, outlines(cls == 3)
 
@@ -192,11 +216,35 @@ def write_svg(layers, lines, path):
         f.write("\n".join(out + ["</svg>", ""]))
 
 
+def compare(layers, lines, path):
+    """The vector drawn beside the original drawing."""
+    from PIL import Image, ImageDraw
+    k, size = 9.0, 1100                               # pixels per mm
+    im = Image.new("RGB", (size, size), (252, 251, 247))
+    d = ImageDraw.Draw(im)
+    px = lambda q: (size / 2 + q[0] * k, size / 2 - q[1] * k)
+    for (rgb, _), polys, _, _ in layers:
+        for g in polys:
+            d.polygon([px(q) for q in g.exterior.coords], fill="#%06x" % rgb)
+            for h in g.interiors:
+                d.polygon([px(q) for q in h.coords], fill=(252, 251, 247))
+    for pts in lines:
+        d.line([px(q) for q in pts], fill=(25, 20, 18), width=3)
+    for ex, ey in EYES:
+        x, y = px(to_mm(ex, ey))
+        d.ellipse([x - 7, y - 7, x + 7, y + 7], fill=(0, 0, 0))
+    orig = Image.open(ART).convert("RGB").resize((size, size))
+    sheet = Image.new("RGB", (size * 2 + 20, size), "white")
+    sheet.paste(orig, (0, 0)); sheet.paste(im, (size + 20, 0))
+    sheet.save(path)
+
+
 if __name__ == "__main__":
     os.makedirs(OUT_DIR, exist_ok=True)
     layers, lines = design()
     base = os.path.join(OUT_DIR, "cardinal-reflection")
     write_svg(layers, lines, base + ".svg")
+    compare(layers, lines, base + "-vector-check.png")
     write_pes(digitize(layers, lines), base + ".pes", "Cardinal mirror")
     pattern = pyembroidery.read(base + ".pes")
     preview(pattern, base + ".png")
