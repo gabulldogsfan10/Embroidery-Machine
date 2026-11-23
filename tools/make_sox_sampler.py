@@ -153,7 +153,7 @@ def build_full():
         for g, spacing in items:
             g = translate(g, ox, oy)
             make_text_pattern.FILL_SPACING = spacing or normal
-            st.pos, first = None, True
+            st.pos, first, st.shape = None, True, g
             for path in make_text_pattern.underlay(g) + make_text_pattern.fill_rows(g, angle):
                 if len(path) >= 2:
                     st.path(path, tie_in=first)
@@ -161,7 +161,7 @@ def build_full():
             st.end_block()
         if i == 0:
             for path in labels:
-                st.pos = None
+                st.pos, st.shape = None, None
                 st.path([(x + ox, y + oy) for x, y in path], tie_in=True)
                 st.end_block()
     make_text_pattern.FILL_SPACING = normal

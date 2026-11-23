@@ -190,7 +190,7 @@ def digitize(layers):
                     if g.geom_type != "Polygon" or g.area < 0.4:
                         continue
                     g = g.simplify(0.1)
-                    st.pos, first = None, True
+                    st.pos, first, st.shape = None, True, g
                     for path in (underlay(g) if edge else []) + fill_rows(g, angle):
                         if len(path) >= 2:
                             st.path(path, tie_in=first)
@@ -200,7 +200,7 @@ def digitize(layers):
             else:
                 _, pts, width = item
                 run = make_text_pattern.run_along(pts, 2.2)
-                st.pos = None
+                st.pos, st.shape = None, None
                 st.path(satin(pts, width) if width else run + run[-2::-1] + run[1:], tie_in=True)
                 st.end_block()
     make_text_pattern.FILL_SPACING = normal

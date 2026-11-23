@@ -15,8 +15,8 @@ import pyembroidery
 from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
 from shapely.affinity import rotate
-from shapely.geometry import LineString, Polygon
-from shapely.ops import unary_union
+from shapely.geometry import LineString, Point, Polygon
+from shapely.ops import substring, unary_union
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "..", "patterns")
@@ -33,6 +33,7 @@ FILL_ANGLE = 45         # degrees; diagonal rows look better on lettering
 MAX_STITCH = 3.0        # longest stitch inside a fill row
 RUN_STITCH = 2.0        # edge underlay stitch length
 TRIM_DISTANCE = 2.0     # jumps longer than this get trimmed
+MAX_TRAVEL = 45.0       # longest hidden walk inside a shape before trimming instead
 
 
 class PolyPen(BasePen):
@@ -199,10 +200,58 @@ class Stitcher:
         for q in (b, a, b, a):
             self._add(pyembroidery.STITCH, *q)
 
+    def travel(self, target):
+        """A hidden route from the needle to target that stays inside the current shape, or None.
+
+        Walking there with small stitches (under or over the fill) avoids a
+        trim, which would leave a thread tail on the back and a jump thread
+        on the front.
+        """
+        shape = getattr(self, "shape", None)
+        if shape is None or self.pos is None:
+            return None
+        safe = shape.buffer(0.02)       # stay strictly inside, so a walk never bridges a gap in the design
+        if safe.contains(LineString([self.pos, target])):
+            return run_along([self.pos, target], 2.0)[1:]
+        best = None
+        inner = shape.buffer(-0.45)
+        for poly in getattr(inner, "geoms", [inner]):
+            if poly.is_empty:
+                continue
+            for ring in [poly.exterior] + list(poly.interiors):
+                line = LineString(ring.coords)
+                da, db = line.project(Point(self.pos)), line.project(Point(target))
+                pa, pb = line.interpolate(da), line.interpolate(db)
+                if not (safe.contains(LineString([self.pos, pa.coords[0]])) and safe.contains(LineString([pb.coords[0], target]))):
+                    continue
+                lo, hi = min(da, db), max(da, db)
+                direct = list(substring(line, lo, hi).coords)
+                around = list(substring(line, hi, line.length).coords) + list(substring(line, 0, lo).coords)
+                if da > db:
+                    direct = direct[::-1]
+                else:
+                    around = around[::-1]
+                for pts in (direct, around):
+                    route = [self.pos] + pts + [target]
+                    length = LineString(route).length
+                    if length < MAX_TRAVEL and (best is None or length < best[0]):
+                        best = (length, route)
+        if not best:
+            return None
+        walk = LineString(best[1])          # even 2 mm steps; the ring itself has far more points than that
+        n = max(1, round(walk.length / 2.0))
+        return [walk.interpolate(i / n, normalized=True).coords[0] for i in range(1, n + 1)]
+
     def path(self, pts, tie_in=False):
-        if self.pos is None or math.dist(self.pos, pts[0]) > TRIM_DISTANCE:
-            # Long move: tie off, trim, and jump, so no thread is left
-            # across the gap.
+        route = None
+        if self.pos is not None and math.dist(self.pos, pts[0]) > TRIM_DISTANCE:
+            route = self.travel(pts[0])
+        if route:
+            for q in route:
+                self._add(pyembroidery.STITCH, *q)
+        elif self.pos is None or math.dist(self.pos, pts[0]) > TRIM_DISTANCE:
+            # Long move with no hidden route: tie off, trim, and jump, so no
+            # thread is left across the gap.
             if self.pos is not None:
                 self.tie_off()
                 self.p.add_command(pyembroidery.TRIM)
@@ -263,6 +312,7 @@ def stitch(layers):
         for shape, angle in items:
             shape = _shift(shape, ox, oy)
             st.pos = None
+            st.shape = shape
             first = True
             for path in underlay(shape) + fill_rows(shape, angle):
                 if len(path) < 2:
